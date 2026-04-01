@@ -1,0 +1,12 @@
+# Feeds to monitor for summarization.
+# freshrss_feed_id is the GReader stream ID (find via FreshRSS API subscription/list).
+# Start with Levine + Zvi, expand as needed.
+
+feeds:
+  - title: "Matt Levine"
+    freshrss_feed_id: "feed/36"
+    url: "https://www.bloomberg.com/account/newsletters/money-stuff"
+
+  - title: "Don't Worry About the Vase (Zvi)"
+    freshrss_feed_id: "feed/72"
+    url: "https://thezvi.substack.com/"

@@ -1,0 +1,79 @@
+{# Reusable section card partial.
+   Expects from parent scope:
+     section (Section model), article (Article model), confidence (float, per-user),
+     weights (dict[str, float]), show_source (bool), threshold (float),
+     surprise_ids (set[int], optional)
+#}
+{% set is_surprise = section.id in (surprise_ids or []) %}
+{% set tier = 'high' if confidence > 0.7 else ('mid' if confidence > threshold else 'low') %}
+<div class="section-card tier-{{ tier }} {% if is_surprise %}surprise{% endif %} {% if tier == 'low' and not section.is_surprise %}collapsed{% endif %}"
+     data-section-id="{{ section.id }}" tabindex="0">
+    <div class="section-header" {% if tier == 'low' or section.is_surprise %}style="cursor:pointer" onclick="toggleCollapse(this)"{% endif %}>
+        <h4>
+            <span class="confidence-badge {{ tier }}"
+                  title="{{ '%.0f' | format(confidence * 100) }}%">
+                {% if is_surprise %}Discover{% elif tier == 'high' %}Likely{% elif tier == 'mid' %}Maybe{% else %}Skip{% endif %}
+            </span>
+            {{ section.heading or 'Untitled' }}
+            {% if show_source and article %}
+            <span class="feed-name">— {{ article.feed.title if article.feed else article.title }}</span>
+            {% endif %}
+        </h4>
+        <div class="feedback-btns">
+            <button onclick="event.stopPropagation(); vote({{ section.id }}, 1, this)" aria-label="Mark as interesting">+</button>
+            <button onclick="event.stopPropagation(); vote({{ section.id }}, -1, this)" aria-label="Mark as not interesting">&minus;</button>
+        </div>
+    </div>
+    <div class="section-body">
+        <p>{{ section.summary }}</p>
+
+        {# Scoring reasoning — compact one-line #}
+        {% if section.tags_list %}
+        <div class="scoring-reason">
+            {% for tag in section.tags_list %}
+            {% set w = weights.get(tag, 0.0) %}
+            <span class="tag-weight {% if w > 0.3 %}positive{% elif w < -0.3 %}negative{% else %}neutral{% endif %}">
+                {{ tag }}
+                <small>({{ '%+.1f' | format(w) }})</small>
+                <button class="downweight-btn" onclick="event.stopPropagation(); downweight('{{ tag }}')" title="Reduce weight for {{ tag }}">&darr;</button>
+            </span>
+            {% endfor %}
+            {% if section.has_humor %}<span class="tag">😄</span>{% endif %}
+            {% if section.has_surprise_data %}<span class="tag">📊</span>{% endif %}
+            {% if section.has_actionable_advice %}<span class="tag">💡</span>{% endif %}
+        </div>
+        {% endif %}
+
+        {# Scoring reasoning — per-user LLM reasoning if available, else segmentation reasoning #}
+        {% if score_reasoning %}
+        <details class="reasoning-detail">
+            <summary><small>Why this score?</small></summary>
+            <p class="reasoning-text">{{ score_reasoning }}</p>
+        </details>
+        {% elif section.reasoning %}
+        <details class="reasoning-detail">
+            <summary><small>Why this section?</small></summary>
+            <p class="reasoning-text">{{ section.reasoning }}</p>
+        </details>
+        {% endif %}
+
+        {# Structured feedback panel — appears on thumbs-down #}
+        <div class="feedback-detail" id="feedback-detail-{{ section.id }}" style="display:none;">
+            <div class="feedback-chips">
+                <button class="chip" onclick="selectReason(this)">Wrong topic</button>
+                <button class="chip" onclick="selectReason(this)">Not interesting</button>
+                <button class="chip" onclick="selectReason(this)">Too vague</button>
+                <button class="chip" onclick="selectReason(this)">Already know this</button>
+            </div>
+            <input type="text" class="feedback-reason-text" placeholder="Other reason (optional)..." maxlength="200">
+            <button class="feedback-submit" onclick="submitDetailedFeedback({{ section.id }}, this)">Send</button>
+        </div>
+
+        {% if article and article.url %}
+        <div class="section-link">
+            <a href="{{ article.url }}" target="_blank" rel="noopener"
+               onclick="trackClick({{ section.id }})">Read original →</a>
+        </div>
+        {% endif %}
+    </div>
+</div>

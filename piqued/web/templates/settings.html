@@ -1,0 +1,381 @@
+{% extends "base.html" %}
+{% block title %}Settings — Piqued{% endblock %}
+
+{% block content %}
+{% if is_wizard %}
+<article style="border: 2px solid var(--pico-primary); padding: 1.5rem; margin-bottom: 2rem; border-radius: 8px;">
+    <h3>Welcome to Piqued</h3>
+    <p>Let's get you set up. You'll need:</p>
+    <ol>
+        <li>An LLM API key (Gemini, or a local Ollama instance)</li>
+        <li>Your FreshRSS API password</li>
+    </ol>
+    <p>Fill in the required fields below, then save to get started.</p>
+</article>
+{% endif %}
+
+{% if request.query_params.get('error') %}
+<article style="border-color: var(--pico-del-color); padding: 0.75rem; margin-bottom: 1rem;">
+    <small style="color: var(--pico-del-color);">{{ request.query_params.error }}</small>
+</article>
+{% endif %}
+
+<h2>Settings</h2>
+
+{# ─── Admin-only: App Configuration ─── #}
+{% if current_user.role == 'admin' %}
+<form method="post" action="/settings">
+    <input type="hidden" name="_csrf" value="{{ request.state.csrf }}">
+
+    <!-- LLM Configuration -->
+    <details open>
+        <summary><strong>LLM Configuration</strong></summary>
+        <fieldset>
+            <label for="llm_provider">Provider</label>
+            <select id="llm_provider" name="llm_provider">
+                {% for p in providers %}
+                <option value="{{ p }}" {% if current.llm_provider == p %}selected{% endif %}>{{ p | title }}</option>
+                {% endfor %}
+            </select>
+
+            <label for="llm_model">Model</label>
+            <select id="llm_model" name="llm_model" data-current="{{ current.llm_model }}"></select>
+
+            <label for="llm_api_key">API Key {% if is_wizard %}<span style="color: var(--pico-del-color);">*required</span>{% endif %}</label>
+            <input type="password" id="llm_api_key" name="llm_api_key"
+                   value="{{ current.llm_api_key }}" placeholder="Enter API key">
+
+            <label for="llm_base_url">Base URL <small>(Ollama only)</small></label>
+            <input type="text" id="llm_base_url" name="llm_base_url" value="{{ current.llm_base_url }}"
+                   placeholder="http://localhost:11434">
+        </fieldset>
+
+        <details>
+            <summary><small>Advanced: separate classification model</small></summary>
+            <fieldset>
+                <p style="font-size: 0.85rem; color: var(--pico-muted-color);">
+                    Use a different model for content classification. Leave blank for primary model.
+                </p>
+                <label for="llm_classify_provider">Classification Provider</label>
+                <select id="llm_classify_provider" name="llm_classify_provider">
+                    <option value="">Same as primary</option>
+                    {% for p in providers %}
+                    <option value="{{ p }}" {% if current.llm_classify_provider == p %}selected{% endif %}>{{ p | title }}</option>
+                    {% endfor %}
+                </select>
+                <label for="llm_classify_model">Classification Model</label>
+                <select id="llm_classify_model" name="llm_classify_model" data-current="{{ current.llm_classify_model }}"></select>
+                <label for="llm_classify_api_key">Classification API Key</label>
+                <input type="password" id="llm_classify_api_key" name="llm_classify_api_key" value="{{ current.llm_classify_api_key }}">
+            </fieldset>
+        </details>
+    </details>
+
+    <!-- Scoring Configuration -->
+    <details>
+        <summary><strong>Scoring</strong></summary>
+        <fieldset>
+            <label for="scoring_mode">Scoring Mode</label>
+            <select id="scoring_mode" name="scoring_mode">
+                <option value="hybrid" {% if current.scoring_mode == 'hybrid' %}selected{% endif %}>Hybrid (LLM + formula fallback)</option>
+                <option value="llm" {% if current.scoring_mode == 'llm' %}selected{% endif %}>LLM only</option>
+                <option value="formula" {% if current.scoring_mode == 'formula' %}selected{% endif %}>Formula only (no LLM scoring)</option>
+            </select>
+            <small style="color: var(--pico-muted-color);">Hybrid recommended — uses LLM scores when available, falls back to formula.</small>
+
+            <details style="margin-top: 0.5rem;">
+                <summary><small>Advanced: scoring model override</small></summary>
+                <fieldset>
+                    <p style="font-size: 0.85rem; color: var(--pico-muted-color);">
+                        Use a faster/cheaper model for scoring. Leave blank to use the classification model or primary.
+                    </p>
+                    <label for="llm_scoring_provider">Scoring Provider</label>
+                    <select id="llm_scoring_provider" name="llm_scoring_provider">
+                        <option value="">Same as classification</option>
+                        {% for p in providers %}
+                        <option value="{{ p }}" {% if current.llm_scoring_provider == p %}selected{% endif %}>{{ p | title }}</option>
+                        {% endfor %}
+                    </select>
+                    <label for="llm_scoring_model">Scoring Model</label>
+                    <select id="llm_scoring_model" name="llm_scoring_model" data-current="{{ current.llm_scoring_model }}"></select>
+                    <label for="llm_scoring_api_key">Scoring API Key</label>
+                    <input type="password" id="llm_scoring_api_key" name="llm_scoring_api_key" value="{{ current.llm_scoring_api_key }}">
+                </fieldset>
+            </details>
+        </fieldset>
+    </details>
+
+    <!-- FreshRSS Configuration -->
+    <details open>
+        <summary><strong>FreshRSS</strong></summary>
+        <fieldset>
+            <label for="freshrss_base_url">FreshRSS URL</label>
+            <input type="url" id="freshrss_base_url" name="freshrss_base_url" value="{{ current.freshrss_base_url }}">
+            <label for="freshrss_username">Username</label>
+            <input type="text" id="freshrss_username" name="freshrss_username" value="{{ current.freshrss_username }}">
+            <label for="freshrss_api_pass">API Password {% if is_wizard %}<span style="color: var(--pico-del-color);">*required</span>{% endif %}</label>
+            <input type="password" id="freshrss_api_pass" name="freshrss_api_pass" value="{{ current.freshrss_api_pass }}">
+        </fieldset>
+    </details>
+
+    <!-- OIDC Configuration -->
+    <details>
+        <summary><strong>OIDC (Authentik)</strong></summary>
+        <fieldset>
+            <label for="oidc_server_metadata_url">Discovery URL</label>
+            <input type="url" id="oidc_server_metadata_url" name="oidc_server_metadata_url"
+                   value="{{ current.oidc_server_metadata_url }}"
+                   placeholder="https://auth.example.com/application/o/piqued/.well-known/openid-configuration">
+            <label for="oidc_client_id">Client ID</label>
+            <input type="text" id="oidc_client_id" name="oidc_client_id" value="{{ current.oidc_client_id }}">
+            <label for="oidc_client_secret">Client Secret</label>
+            <input type="password" id="oidc_client_secret" name="oidc_client_secret" value="{{ current.oidc_client_secret }}">
+            <label for="oidc_admin_group">Admin Group Name</label>
+            <input type="text" id="oidc_admin_group" name="oidc_admin_group" value="{{ current.oidc_admin_group }}"
+                   placeholder="piqued-admin">
+            <small>Authentik group that grants admin role on login</small>
+        </fieldset>
+    </details>
+
+    <!-- Processing -->
+    <details>
+        <summary><strong>Processing</strong></summary>
+        <fieldset>
+            <div class="grid">
+                <div>
+                    <label for="feed_poll_interval_minutes">Poll interval (minutes)</label>
+                    <input type="number" id="feed_poll_interval_minutes" name="feed_poll_interval_minutes"
+                           value="{{ current.feed_poll_interval_minutes }}" min="1" max="1440">
+                </div>
+                <div>
+                    <label for="max_articles_per_cycle">Max articles per cycle</label>
+                    <input type="number" id="max_articles_per_cycle" name="max_articles_per_cycle"
+                           value="{{ current.max_articles_per_cycle }}" min="1" max="50">
+                </div>
+            </div>
+            <div class="grid">
+                <div>
+                    <label for="daily_token_budget">Daily token budget</label>
+                    <input type="number" id="daily_token_budget" name="daily_token_budget"
+                           value="{{ current.daily_token_budget }}" min="1000" step="10000">
+                </div>
+                <div>
+                    <label for="backlog_order">Backlog order</label>
+                    <select id="backlog_order" name="backlog_order">
+                        <option value="newest_first" {% if current.backlog_order == 'newest_first' %}selected{% endif %}>Newest first</option>
+                        <option value="oldest_first" {% if current.backlog_order == 'oldest_first' %}selected{% endif %}>Oldest first</option>
+                    </select>
+                </div>
+            </div>
+        </fieldset>
+    </details>
+
+    <!-- Security -->
+    <details>
+        <summary><strong>Security</strong></summary>
+        <fieldset>
+            <label for="auth_methods">Enabled auth methods</label>
+            <input type="text" id="auth_methods" name="auth_methods" value="{{ current.auth_methods }}"
+                   placeholder="oidc,local,header">
+            <small>Comma-separated: oidc, local, header. At least one required.</small>
+
+            <label for="trusted_proxy_ip">Trusted proxy IP</label>
+            <input type="text" id="trusted_proxy_ip" name="trusted_proxy_ip" value="{{ current.trusted_proxy_ip }}"
+                   placeholder="e.g. 172.18.0.1">
+            <small>IP address of the SWAG/nginx reverse proxy (for forward-auth header trust)</small>
+
+            <label for="rss_feed_api_key">RSS Feed API Key</label>
+            <input type="password" id="rss_feed_api_key" name="rss_feed_api_key" value="{{ current.rss_feed_api_key }}">
+        </fieldset>
+    </details>
+
+    <button type="submit">{% if is_wizard %}Save & Get Started{% else %}Save Settings{% endif %}</button>
+</form>
+
+{% if not is_wizard %}
+<hr>
+{# ─── Admin: User Management ─── #}
+<h2>User Management</h2>
+
+<table>
+    <thead>
+        <tr><th>Username</th><th>Role</th><th>Source</th><th>Last Login</th><th>Actions</th></tr>
+    </thead>
+    <tbody>
+        {% for u in all_users %}
+        <tr>
+            <td>{{ u.username }} {% if u.oidc_provider %}<small>({{ u.oidc_provider }})</small>{% endif %}</td>
+            <td>
+                <span style="color: {% if u.role == 'admin' %}#4caf50{% else %}inherit{% endif %};">{{ u.role }}</span>
+            </td>
+            <td style="font-size: 0.8rem;">{{ u.role_source }}</td>
+            <td style="font-size: 0.8rem;">{{ u.last_login.strftime('%Y-%m-%d %H:%M') if u.last_login else 'never' }}</td>
+            <td>
+                {% if u.id != current_user.id %}
+                <form method="post" action="/admin/user/{{ u.id }}/role" style="display:inline;">
+                    <input type="hidden" name="_csrf" value="{{ request.state.csrf }}">
+                    {% if u.role == 'user' %}
+                    <input type="hidden" name="role" value="admin">
+                    <button type="submit" style="font-size: 0.75rem; padding: 0.1rem 0.5rem;">Promote</button>
+                    {% else %}
+                    <input type="hidden" name="role" value="user">
+                    <button type="submit" style="font-size: 0.75rem; padding: 0.1rem 0.5rem;" class="secondary">Demote</button>
+                    {% endif %}
+                </form>
+                {% else %}
+                <small>you</small>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<details>
+    <summary><strong>Create Local User</strong></summary>
+    <form method="post" action="/admin/user/create">
+        <input type="hidden" name="_csrf" value="{{ request.state.csrf }}">
+        <div class="grid">
+            <div>
+                <label for="new_username">Username</label>
+                <input type="text" id="new_username" name="username" required>
+            </div>
+            <div>
+                <label for="new_password">Password</label>
+                <input type="password" id="new_password" name="password" required>
+            </div>
+            <div>
+                <label for="new_role">Role</label>
+                <select id="new_role" name="role">
+                    <option value="user">User</option>
+                    <option value="admin">Admin</option>
+                </select>
+            </div>
+        </div>
+        <button type="submit">Create User</button>
+    </form>
+</details>
+{% endif %}
+
+{% else %}
+{# ─── Regular user: no app config, just profile ─── #}
+<p style="color: var(--pico-muted-color);">App configuration is managed by administrators.</p>
+{% endif %}
+
+{# ─── Interest Profile (all users see their own) ─── #}
+{% if not is_wizard %}
+<hr>
+<h2>Your Interest Profile</h2>
+
+{% if user_profile and user_profile.profile_text %}
+<article style="padding: 1rem; border-radius: 8px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+        <small style="color: var(--pico-muted-color);">
+            Version {{ user_profile.profile_version }}
+            {% if user_profile.last_synthesized_at %}
+            · Last updated {{ user_profile.last_synthesized_at.strftime('%Y-%m-%d %H:%M') }}
+            {% endif %}
+            {% if user_profile.pending_feedback_count > 0 %}
+            · {{ user_profile.pending_feedback_count }} feedback pending synthesis
+            {% endif %}
+        </small>
+    </div>
+    <div style="white-space: pre-wrap; font-size: 0.9em; line-height: 1.6;">{{ user_profile.profile_text }}</div>
+</article>
+{% else %}
+<article style="padding: 1rem; border-radius: 8px; border-style: dashed;">
+    <p style="color: var(--pico-muted-color); margin: 0;">
+        No profile yet. Piqued builds your interest profile automatically as you read and give feedback on articles.
+    </p>
+</article>
+{% endif %}
+
+{% if weights %}
+<details style="margin-top: 1rem;">
+    <summary><small>Topic weights ({{ weights | length }} tracked)</small></summary>
+    <table>
+        <thead>
+            <tr><th>Topic</th><th>Weight</th><th>Feedback</th></tr>
+        </thead>
+        <tbody>
+            {% for w in weights %}
+            <tr>
+                <td><span class="tag">{{ w.topic }}</span></td>
+                <td>
+                    <span style="color: {% if w.weight > 0.3 %}#4caf50{% elif w.weight < -0.3 %}#f44336{% else %}inherit{% endif %}">
+                        {{ '%+.2f' | format(w.weight) }}
+                    </span>
+                </td>
+                <td>{{ w.feedback_count }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</details>
+{% endif %}
+
+{% if recent_feedback %}
+<h3>Recent Feedback</h3>
+<table>
+    <thead>
+        <tr><th>When</th><th>Section</th><th>Rating</th><th>Source</th></tr>
+    </thead>
+    <tbody>
+        {% for fb in recent_feedback %}
+        <tr>
+            <td style="font-size: 0.8rem;">{{ fb.created_at.strftime('%m-%d %H:%M') if fb.created_at else '' }}</td>
+            <td>{{ fb.section.heading if fb.section else 'deleted' }}</td>
+            <td>{% if fb.rating > 0 %}👍{% else %}👎{% endif %}</td>
+            <td style="font-size: 0.8rem;">{{ fb.source.value if fb.source else '' }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const MODEL_OPTIONS = {
+    gemini: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
+    openai: ["gpt-4.1-mini", "gpt-4.1", "gpt-4.1-nano", "o4-mini"],
+    claude: ["claude-sonnet-4-5-20250514", "claude-haiku-4-5-20251001", "claude-opus-4-20250514"],
+    ollama: ["llama3.1:8b", "mistral", "gemma2:9b"]
+};
+
+function populateModels(providerSel, modelSel, currentVal) {
+    const provider = providerSel.value;
+    const models = MODEL_OPTIONS[provider] || [];
+    const hasBlank = modelSel.id.includes('classify');
+    modelSel.innerHTML = (hasBlank ? '<option value="">Same as primary</option>' : '') +
+        models.map(m =>
+            `<option value="${m}" ${m === currentVal ? 'selected' : ''}>${m}</option>`
+        ).join('');
+}
+
+// Primary model
+const providerSel = document.getElementById('llm_provider');
+const modelSel = document.getElementById('llm_model');
+populateModels(providerSel, modelSel, modelSel.dataset.current || '');
+providerSel.addEventListener('change', () => populateModels(providerSel, modelSel, ''));
+
+// Classification model
+const classifyProvider = document.getElementById('llm_classify_provider');
+const classifyModel = document.getElementById('llm_classify_model');
+if (classifyProvider && classifyModel) {
+    function updateClassifyModels() {
+        if (classifyProvider.value) {
+            populateModels(classifyProvider, classifyModel, classifyModel.dataset.current || '');
+        } else {
+            classifyModel.innerHTML = '<option value="">Same as primary</option>';
+        }
+    }
+    updateClassifyModels();
+    classifyProvider.addEventListener('change', () => {
+        classifyModel.dataset.current = '';
+        updateClassifyModels();
+    });
+}
+</script>
+{% endblock %}

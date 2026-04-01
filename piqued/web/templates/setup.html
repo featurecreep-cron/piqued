@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Setup — Piqued{% endblock %}
+
+{% block content %}
+<div style="max-width: 600px; margin: 2rem auto;">
+    <h2>Welcome to Piqued</h2>
+    <p>Create your admin account and configure the app to get started.</p>
+
+    {% if error %}
+    <article style="border-color: var(--pico-del-color); padding: 0.75rem; margin-bottom: 1rem;">
+        <small style="color: var(--pico-del-color);">{{ error }}</small>
+    </article>
+    {% endif %}
+
+    <form method="post" action="/setup">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+
+        <!-- Admin Account -->
+        <fieldset>
+            <legend><strong>Admin Account</strong></legend>
+            <div class="grid">
+                <div>
+                    <label for="username">Username <span style="color: var(--pico-del-color);">*</span></label>
+                    <input type="text" id="username" name="username" required autocomplete="username">
+                </div>
+                <div>
+                    <label for="password">Password <span style="color: var(--pico-del-color);">*</span></label>
+                    <input type="password" id="password" name="password" required autocomplete="new-password">
+                </div>
+            </div>
+        </fieldset>
+
+        <!-- LLM Configuration -->
+        <fieldset>
+            <legend><strong>AI Provider</strong></legend>
+            <div class="grid">
+                <div>
+                    <label for="llm_provider">Provider</label>
+                    <select id="llm_provider" name="llm_provider">
+                        {% for p in providers %}
+                        <option value="{{ p }}" {% if p == 'gemini' %}selected{% endif %}>{{ p | title }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="llm_model">Model <small>(used for article analysis)</small></label>
+                    <select id="llm_model" name="llm_model"></select>
+                </div>
+            </div>
+            <label for="llm_api_key">API Key <span style="color: var(--pico-del-color);">*</span></label>
+            <input type="password" id="llm_api_key" name="llm_api_key" placeholder="Your API key">
+            <small style="color: var(--pico-muted-color);">
+                Piqued automatically uses a faster model for scoring and classification.
+                You can override this in Settings after setup.
+            </small>
+            <label for="llm_base_url">Base URL <small>(Ollama only)</small></label>
+            <input type="text" id="llm_base_url" name="llm_base_url" placeholder="http://localhost:11434">
+        </fieldset>
+
+        <!-- FreshRSS -->
+        <fieldset>
+            <legend><strong>FreshRSS Connection</strong></legend>
+            <label for="freshrss_base_url">FreshRSS URL</label>
+            <input type="url" id="freshrss_base_url" name="freshrss_base_url"
+                   value="https://freshrss.savor.li" placeholder="https://freshrss.example.com">
+            <div class="grid">
+                <div>
+                    <label for="freshrss_username">Username</label>
+                    <input type="text" id="freshrss_username" name="freshrss_username" value="your_username">
+                </div>
+                <div>
+                    <label for="freshrss_api_pass">API Password <span style="color: var(--pico-del-color);">*</span></label>
+                    <input type="password" id="freshrss_api_pass" name="freshrss_api_pass">
+                </div>
+            </div>
+        </fieldset>
+
+        <button type="submit" style="width: 100%; margin-top: 1rem;">Create Account & Get Started</button>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Models organized by tier: first = recommended "capable" model, rest = alternatives
+const MODEL_TIERS = {
+    gemini: {
+        capable: [{v: "gemini-2.5-pro", l: "Gemini 2.5 Pro (best quality)"}, {v: "gemini-2.5-flash", l: "Gemini 2.5 Flash (good balance)"}],
+        fast: "gemini-2.5-flash"
+    },
+    openai: {
+        capable: [{v: "gpt-4.1", l: "GPT-4.1 (best quality)"}, {v: "gpt-4.1-mini", l: "GPT-4.1 Mini (good balance)"}],
+        fast: "gpt-4.1-nano"
+    },
+    claude: {
+        capable: [{v: "claude-sonnet-4-5-20250514", l: "Claude Sonnet 4.5 (best quality)"}, {v: "claude-haiku-4-5-20251001", l: "Claude Haiku 4.5 (good balance)"}],
+        fast: "claude-haiku-4-5-20251001"
+    },
+    ollama: {
+        capable: [{v: "llama3.1:8b", l: "Llama 3.1 8B"}, {v: "mistral", l: "Mistral"}, {v: "gemma2:9b", l: "Gemma 2 9B"}],
+        fast: "llama3.1:8b"
+    }
+};
+
+function populateModels(providerSel, modelSel, currentVal) {
+    const tier = MODEL_TIERS[providerSel.value];
+    if (!tier) return;
+    modelSel.innerHTML = tier.capable.map(m =>
+        '<option value="' + m.v + '"' + (m.v === currentVal ? ' selected' : '') + '>' + m.l + '</option>'
+    ).join('');
+}
+
+const providerSel = document.getElementById('llm_provider');
+const modelSel = document.getElementById('llm_model');
+populateModels(providerSel, modelSel, 'gemini-2.5-flash');
+providerSel.addEventListener('change', function() { populateModels(providerSel, modelSel, ''); });
+</script>
+{% endblock %}

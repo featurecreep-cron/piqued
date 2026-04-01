@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Piqued{% endblock %}</title>
+    {% block head_extra %}{% endblock %}
+    {% if request.state.csrf is defined and request.state.csrf %}
+    <meta name="csrf-token" content="{{ request.state.csrf }}">
+    {% endif %}
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <style>
+        :root {
+            --pico-font-size: 15px;
+        }
+        nav { margin-bottom: 1rem; }
+        nav ul { gap: 0.5rem; }
+        .section-card {
+            border-left: 4px solid var(--pico-muted-border-color);
+            padding: 0.75rem 1rem;
+            margin-bottom: 0.75rem;
+            border-radius: 4px;
+            background: var(--pico-card-background-color);
+        }
+        .section-card.tier-high { border-left-color: #4caf50; }
+        .section-card.tier-mid { border-left-color: #ff9800; }
+        .section-card.tier-low { border-left-color: #9e9e9e; }
+        .section-card.surprise {
+            border-left-color: #7c4dff;
+            border-left-style: dashed;
+        }
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+        }
+        .section-header h4 { margin: 0; font-size: 0.95rem; }
+        .confidence-badge {
+            font-size: 0.75rem;
+            padding: 0.15rem 0.5rem;
+            border-radius: 12px;
+            white-space: nowrap;
+        }
+        .confidence-badge.high { background: #4caf50; color: #fff; }
+        .confidence-badge.mid { background: #ff9800; color: #fff; }
+        .confidence-badge.low { background: #616161; color: #ccc; }
+        .tags { margin: 0.25rem 0; }
+        .tag {
+            display: inline-block;
+            font-size: 0.7rem;
+            padding: 0.1rem 0.4rem;
+            border-radius: 8px;
+            background: var(--pico-muted-border-color);
+            color: var(--pico-muted-color);
+        }
+        .feedback-btns button {
+            padding: 0.2rem 0.6rem;
+            font-size: 0.85rem;
+            cursor: pointer;
+            border: 1px solid var(--pico-muted-border-color);
+            border-radius: 4px;
+            background: transparent;
+            color: var(--pico-color);
+        }
+        .feedback-btns button:hover { background: var(--pico-muted-border-color); }
+        .feedback-btns button.voted-up { background: #4caf50; color: #fff; border-color: #4caf50; }
+        .feedback-btns button.voted-down { background: #f44336; color: #fff; border-color: #f44336; }
+        .feedback-msg {
+            font-size: 0.75rem;
+            color: var(--pico-muted-color);
+            font-style: italic;
+        }
+        .collapsed .section-body { display: none; }
+        .section-link {
+            font-size: 0.8rem;
+            text-align: right;
+        }
+        .discovery-header {
+            font-style: italic;
+            color: var(--pico-muted-color);
+            border-top: 1px dashed var(--pico-muted-border-color);
+            padding-top: 1rem;
+            margin-top: 1.5rem;
+        }
+        .article-group { margin-bottom: 2rem; }
+        .article-group h3 {
+            font-size: 1.05rem;
+            margin-bottom: 0.5rem;
+            border-bottom: 1px solid var(--pico-muted-border-color);
+            padding-bottom: 0.25rem;
+        }
+        .article-group .feed-name {
+            font-size: 0.75rem;
+            color: var(--pico-muted-color);
+        }
+        .date-nav { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+        .date-nav a {
+            font-size: 0.8rem;
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+        }
+        .date-nav a.active {
+            background: var(--pico-primary);
+            color: var(--pico-primary-inverse);
+        }
+        kbd { font-size: 0.7rem; }
+        .view-toggle { display: flex; gap: 0.5rem; }
+        .view-toggle a { font-size: 0.85rem; }
+        .feedback-detail {
+            margin: 0.5rem 0;
+            padding: 0.5rem;
+            border: 1px dashed var(--pico-muted-border-color);
+            border-radius: 4px;
+        }
+        .feedback-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 0.4rem; }
+        .chip {
+            font-size: 0.75rem;
+            padding: 0.2rem 0.6rem;
+            border-radius: 12px;
+            border: 1px solid var(--pico-muted-border-color);
+            background: transparent;
+            color: var(--pico-color);
+            cursor: pointer;
+        }
+        .chip:hover, .chip.selected { background: var(--pico-primary); color: var(--pico-primary-inverse); border-color: var(--pico-primary); }
+        .feedback-reason-text {
+            font-size: 0.8rem;
+            padding: 0.3rem 0.5rem;
+            margin-bottom: 0.3rem;
+            width: 100%;
+        }
+        .feedback-submit {
+            font-size: 0.75rem;
+            padding: 0.2rem 0.8rem;
+        }
+        .scoring-reason { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.3rem 0; align-items: center; }
+        .tag-weight {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.2rem;
+            font-size: 0.75rem;
+            padding: 0.1rem 0.4rem;
+            border-radius: 8px;
+            background: var(--pico-muted-border-color);
+        }
+        .tag-weight.positive { background: rgba(76, 175, 80, 0.2); color: #81c784; }
+        .tag-weight.negative { background: rgba(244, 67, 54, 0.2); color: #e57373; }
+        .tag-weight.neutral { color: var(--pico-muted-color); }
+        .tag-weight small { opacity: 0.7; }
+        .downweight-btn {
+            font-size: 0.65rem;
+            padding: 0;
+            margin: 0 0 0 0.15rem;
+            border: none;
+            background: transparent;
+            color: inherit;
+            cursor: pointer;
+            opacity: 0.4;
+            line-height: 1;
+        }
+        .downweight-btn:hover { opacity: 1; color: #f44336; }
+        .reasoning-detail { margin: 0.3rem 0; }
+        .reasoning-detail summary { font-size: 0.75rem; color: var(--pico-muted-color); cursor: pointer; }
+        .reasoning-text { font-size: 0.8rem; color: var(--pico-muted-color); font-style: italic; margin: 0.2rem 0; }
+        .breadcrumb { font-size: 0.85rem; margin-bottom: 1rem; }
+        .breadcrumb a { color: var(--pico-muted-color); }
+        .breadcrumb span { color: var(--pico-color); }
+        .feed-list-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0.75rem;
+            border-bottom: 1px solid var(--pico-muted-border-color);
+        }
+        .feed-list-item:last-child { border-bottom: none; }
+        .feed-list-item .count { font-size: 0.8rem; color: var(--pico-muted-color); }
+        .article-list-item {
+            padding: 0.5rem 0.75rem;
+            border-bottom: 1px solid var(--pico-muted-border-color);
+        }
+        .article-list-item:last-child { border-bottom: none; }
+        .article-list-item h4 { margin: 0; font-size: 0.95rem; }
+        .article-list-item .meta { font-size: 0.75rem; color: var(--pico-muted-color); }
+        .article-status {
+            font-size: 0.7rem;
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+        }
+        .article-status.complete { background: rgba(76, 175, 80, 0.2); color: #81c784; }
+        .article-status.pending { background: rgba(255, 152, 0, 0.2); color: #ffb74d; }
+        .article-status.skipped { background: rgba(158, 158, 158, 0.2); color: #9e9e9e; }
+    </style>
+</head>
+<body>
+    <nav class="container-fluid">
+        <ul>
+            <li><a href="/"><strong>Piqued</strong></a></li>
+        </ul>
+        <ul>
+            <li><a href="/feeds">Feeds</a></li>
+            <li><a href="/settings">Settings</a></li>
+            <li><a href="/log">Log</a></li>
+            {% if current_user %}
+            <li><small>{{ current_user.username }}</small></li>
+            <li><a href="/logout" style="font-size: 0.85rem;">Logout</a></li>
+            {% endif %}
+        </ul>
+    </nav>
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
