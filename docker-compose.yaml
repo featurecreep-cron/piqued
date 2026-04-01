@@ -1,0 +1,25 @@
+services:
+  piqued:
+    build: .
+    container_name: piqued
+    restart: unless-stopped
+    ports:
+      - "8400:8400"
+    environment:
+      PIQUED_DATABASE_PATH: /data/piqued.db
+      PIQUED_FRESHRSS_BASE_URL: https://freshrss.savor.li
+      PIQUED_FRESHRSS_USERNAME: your_username
+      PIQUED_FRESHRSS_API_PASS_FILE: /data/secrets/freshrss_api_pass
+      PIQUED_LLM_API_KEY_FILE: /data/secrets/llm_api_key
+      PIQUED_RSS_FEED_API_KEY_FILE: /data/secrets/rss_feed_key
+      PIQUED_FEED_POLL_INTERVAL_MINUTES: "15"
+    volumes:
+      - ${DOCKER_VOLUME_STORAGE}/piqued:/data
+    mem_limit: 512m
+    cpus: 0.5
+    networks:
+      - compose_default
+
+networks:
+  compose_default:
+    external: true

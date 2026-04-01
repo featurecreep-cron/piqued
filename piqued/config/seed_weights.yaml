@@ -1,0 +1,30 @@
+# Initial interest weights for the Digest service.
+# Positive = interested, negative = anti-interest. Range: [-1.0, +1.0]
+# These seed the interest_weights table on first run.
+
+# Strong interests
+ai_capabilities: 0.8
+actionable_advice: 0.7
+surprising_insight: 0.8
+humor: 0.6
+novel_analysis: 0.7
+financial_insight: 0.5
+practical_tools: 0.6
+
+# Moderate interests
+market_mechanics: 0.4
+regulatory_arbitrage: 0.4
+corporate_governance: 0.3
+data_analysis: 0.4
+psychology: 0.3
+
+# Neutral / unknown
+philosophy: 0.0
+economics: 0.1
+geopolitics: 0.0
+
+# Anti-interests
+tech_policy_law: -0.7
+spac: -0.8
+routine_market_recap: -0.5
+political_commentary: -0.4

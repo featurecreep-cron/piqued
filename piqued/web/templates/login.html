@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Login — Piqued{% endblock %}
+
+{% block content %}
+<div style="max-width: 400px; margin: 3rem auto;">
+    <h2>Piqued</h2>
+    <p>Newsletter interest filter</p>
+
+    {% if error %}
+    <article style="border-color: var(--pico-del-color); padding: 0.75rem;">
+        <small style="color: var(--pico-del-color);">{{ error }}</small>
+    </article>
+    {% endif %}
+
+    {% if 'oidc' in methods and oidc_configured %}
+    <a href="/login/oidc" role="button" style="width: 100%; margin-bottom: 1rem;">
+        Login with Authentik
+    </a>
+    {% endif %}
+
+    {% if 'oidc' in methods and oidc_configured and 'local' in methods %}
+    <hr style="margin: 1.5rem 0;">
+    <p style="text-align: center; font-size: 0.85rem; color: var(--pico-muted-color);">or sign in with password</p>
+    {% endif %}
+
+    {% if 'local' in methods %}
+    <form method="post" action="/login">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" required autocomplete="username">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required autocomplete="current-password">
+        <button type="submit" style="width: 100%;">Sign in</button>
+    </form>
+    {% endif %}
+
+    {% if not ('oidc' in methods and oidc_configured) and not 'local' in methods %}
+    <p>No login methods configured. Contact the administrator.</p>
+    {% endif %}
+</div>
+{% endblock %}

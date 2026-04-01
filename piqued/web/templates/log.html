@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Processing Log — Piqued{% endblock %}
+
+{% block content %}
+<hgroup>
+    <h2>Processing Log</h2>
+    <p>Last 100 entries</p>
+</hgroup>
+
+<table>
+    <thead>
+        <tr><th>Time</th><th>Stage</th><th>Status</th><th>Tokens</th><th>Duration</th><th>Detail</th></tr>
+    </thead>
+    <tbody>
+        {% for log in logs %}
+        <tr>
+            <td style="font-size: 0.8rem; white-space: nowrap;">{{ log.created_at.strftime('%m-%d %H:%M') if log.created_at else '' }}</td>
+            <td>{{ log.stage }}</td>
+            <td>
+                {% if log.status == 'ok' %}✓
+                {% elif log.status == 'error' %}✗
+                {% else %}{{ log.status }}{% endif %}
+            </td>
+            <td>{{ log.tokens_used or '' }}</td>
+            <td>{% if log.duration_ms %}{{ log.duration_ms }}ms{% endif %}</td>
+            <td style="font-size: 0.8rem; max-width: 400px; overflow: hidden; text-overflow: ellipsis;">{{ log.detail or '' }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

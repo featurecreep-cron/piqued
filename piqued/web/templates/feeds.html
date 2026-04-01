@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Feeds — Piqued{% endblock %}
+
+{% block content %}
+<hgroup>
+    <h2>Feeds</h2>
+    <p>{{ feed_count }} feeds configured. Toggle to enable/disable interest filtering.</p>
+</hgroup>
+
+<button onclick="syncFeeds(this)" style="margin-bottom: 1rem;">Sync from FreshRSS</button>
+<span id="sync-msg"></span>
+
+{% for category, feeds in categories.items() %}
+<details open>
+    <summary>
+        <strong>{{ category }}</strong>
+        <small>({{ feeds | selectattr('active') | list | length }}/{{ feeds | length }} active)</small>
+    </summary>
+    <table>
+        <thead>
+            <tr><th>Feed</th><th>Active</th><th>Quality</th></tr>
+        </thead>
+        <tbody>
+            {% for feed in feeds %}
+            <tr>
+                <td>
+                    <a href="/feed/{{ feed.id }}">{{ feed.title }}</a>
+                </td>
+                <td>
+                    <input type="checkbox" role="switch"
+                           {% if feed.active %}checked{% endif %}
+                           onchange="toggleFeed({{ feed.id }}, this)">
+                </td>
+                <td style="font-size: 0.75rem;">
+                    {% if feed.content_quality == 'full' %}
+                    <span style="color: #4caf50;">full</span>
+                    {% elif feed.content_quality == 'paywall' %}
+                    <span style="color: #f44336;">paywall</span>
+                    {% elif feed.content_quality == 'teaser' %}
+                    <span style="color: #ff9800;">teaser</span>
+                    {% else %}
+                    <span style="color: var(--pico-muted-color);">—</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</details>
+{% endfor %}
+
+{% if not categories %}
+<p>No feeds yet. Click "Sync from FreshRSS" to import your subscriptions.</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+async function toggleFeed(feedId, el) {
+    const resp = await fetch(`/feeds/toggle/${feedId}`, {
+        method: 'POST',
+        headers: {'X-CSRF-Token': csrfToken},
+    });
+    if (!resp.ok) { el.checked = !el.checked; return; }
+    const data = await resp.json();
+    el.checked = data.active;
+}
+
+async function syncFeeds(btn) {
+    btn.disabled = true;
+    btn.textContent = 'Syncing...';
+    const msg = document.getElementById('sync-msg');
+    try {
+        const resp = await fetch('/feeds/sync', {
+            method: 'POST',
+            headers: {'X-CSRF-Token': csrfToken},
+        });
+        if (!resp.ok) throw new Error('CSRF or auth error');
+        const data = await resp.json();
+        msg.textContent = `Synced: ${data.total} feeds found, ${data.added} new`;
+        location.reload();
+    } catch (e) {
+        msg.textContent = 'Sync failed: ' + e.message;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Sync from FreshRSS';
+    }
+}
+</script>
+{% endblock %}

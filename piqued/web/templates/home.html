@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Piqued{% endblock %}
+{% block head_extra %}<meta http-equiv="refresh" content="300">{% endblock %}
+
+{% block content %}
+<hgroup>
+    <h2>Top Sections</h2>
+    <p>{{ date }} &middot; {{ all_sections | length }} sections &middot; <kbd>j</kbd>/<kbd>k</kbd> navigate &middot; <kbd>u</kbd>/<kbd>d</kbd> vote</p>
+</hgroup>
+
+<!-- Date navigation -->
+<div class="date-nav">
+    {% for d in available_dates %}
+    <a href="/?date={{ d }}" {% if d == date %}class="active"{% endif %}>{{ d[5:] }}</a>
+    {% endfor %}
+</div>
+
+<!-- View toggle -->
+<div class="view-toggle" style="margin-bottom: 1rem;">
+    <a href="/?date={{ date }}" role="button" class="outline">Top Sections</a>
+    <a href="/feeds" role="button">By Feed</a>
+</div>
+
+{% if not all_sections %}
+<article style="padding: 1.5rem; border-radius: 8px; text-align: center;">
+    {% if not is_configured %}
+    <h3>Not configured yet</h3>
+    <p>Visit <a href="/settings">Settings</a> to set up your AI provider and FreshRSS connection.</p>
+    {% else %}
+    <h3>Waiting for articles</h3>
+    <p>Piqued is fetching and analyzing articles from your feeds. This usually takes a few minutes on the first run.</p>
+    <p aria-busy="true" style="color: var(--pico-muted-color);">Processing...</p>
+    <p><small>The pipeline runs every {{ poll_interval }} minutes. You can also check the <a href="/log">processing log</a>.</small></p>
+    <meta http-equiv="refresh" content="30">
+    {% endif %}
+</article>
+{% endif %}
+
+{# Main sections (not in surprise set) #}
+{% for section, article, confidence, score_reasoning in all_sections if section.id not in surprise_ids %}
+{% include "_section_card.html" %}
+{% endfor %}
+
+{# Discovery section #}
+{% if surprise_ids %}
+<div class="discovery-header">Outside your usual interests</div>
+{% for section, article, confidence, score_reasoning in all_sections if section.id in surprise_ids %}
+{% include "_section_card.html" %}
+{% endfor %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+{% include "_scripts.js" %}
+</script>
+{% endblock %}
