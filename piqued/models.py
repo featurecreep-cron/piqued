@@ -233,6 +233,22 @@ class UserProfile(Base):
     user: Mapped["User"] = relationship(back_populates="profile")
 
 
+class ApiKey(Base):
+    """API keys for Bearer token authentication."""
+
+    __tablename__ = "api_keys"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    key_prefix: Mapped[str] = mapped_column(String, nullable=False)  # first 8 chars
+    key_hash: Mapped[str] = mapped_column(String, unique=True, nullable=False)  # SHA-256
+    name: Mapped[str] = mapped_column(String, default="")
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    user: Mapped["User"] = relationship()
+
+
 class SectionScore(Base):
     """Cached per-user LLM-generated section scores."""
 

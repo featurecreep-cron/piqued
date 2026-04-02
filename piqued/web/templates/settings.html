@@ -358,6 +358,53 @@
     </tbody>
 </table>
 {% endif %}
+
+{# ─── API Keys (all users) ─── #}
+{% if not is_wizard %}
+<hr>
+<h2>API Keys</h2>
+<p style="color: var(--pico-muted-color); font-size: 0.9rem;">
+    API keys let you access piqued data from scripts, RSS readers, or other tools.
+    Keys are shown once at creation — save them somewhere safe.
+</p>
+
+{% if request.query_params.get('new_key') %}
+<article style="padding: 1rem; border: 2px solid var(--pico-primary); border-radius: 8px; margin-bottom: 1rem;">
+    <strong>New API key created — copy it now, it won't be shown again:</strong>
+    <code style="display: block; margin-top: 0.5rem; padding: 0.5rem; background: var(--pico-code-background); word-break: break-all;">{{ request.query_params.get('new_key') }}</code>
+</article>
+{% endif %}
+
+{% if api_keys %}
+<table>
+    <thead>
+        <tr><th>Name</th><th>Created</th><th>Last Used</th><th></th></tr>
+    </thead>
+    <tbody>
+        {% for key in api_keys %}
+        <tr>
+            <td>{{ key.name or 'Unnamed' }}</td>
+            <td style="font-size: 0.8rem;">{{ key.created_at.strftime('%Y-%m-%d') if key.created_at else '' }}</td>
+            <td style="font-size: 0.8rem;">{{ key.last_used_at.strftime('%Y-%m-%d %H:%M') if key.last_used_at else 'Never' }}</td>
+            <td>
+                <form method="post" action="/settings/keys/{{ key.id }}/revoke" style="margin: 0;">
+                    <input type="hidden" name="_csrf" value="{{ request.state.csrf }}">
+                    <button type="submit" class="outline secondary" style="font-size: 0.8rem; padding: 0.2rem 0.6rem;">Revoke</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+<form method="post" action="/settings/keys/create" style="display: flex; gap: 0.5rem; align-items: end;">
+    <input type="hidden" name="_csrf" value="{{ request.state.csrf }}">
+    <input type="text" name="key_name" placeholder="Key name (optional)" style="max-width: 300px; margin-bottom: 0;">
+    <button type="submit" style="margin-bottom: 0;">Create Key</button>
+</form>
+{% endif %}
+
 {% endif %}
 {% endblock %}
 
