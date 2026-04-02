@@ -1,0 +1,625 @@
+"""v1 JSON API routes."""
+
+import hashlib
+import logging
+import secrets
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from piqued import config
+from piqued.api.v1.auth import get_api_user, require_api_admin
+from piqued.api.v1.schemas import (
+    ApiKeyCreate,
+    ApiKeyCreated,
+    ApiKeyItem,
+    ApiKeyList,
+    ArticleDetail,
+    ArticleSection,
+    ArticleSummary,
+    FeedbackRequest,
+    FeedbackResult,
+    FeedDetail,
+    FeedItem,
+    FeedList,
+    ProcessingLogEntry,
+    ProcessingLogList,
+    ProfileEditRequest,
+    SectionItem,
+    SectionList,
+    SettingsResponse,
+    SyncResult,
+    UserInfo,
+    UserList,
+    UserProfileResponse,
+    WeightItem,
+)
+from piqued.db import get_session
+from piqued.models import ApiKey, Feed, User, UserProfile
+from piqued.web.data import (
+    get_article_detail,
+    get_feed_detail,
+    get_feeds_list,
+    get_home_sections,
+    get_processing_log,
+    get_settings_data,
+    get_user_profile,
+)
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/v1", tags=["v1"])
+
+KEY_PREFIX = "pqd_"
+
+
+# ── Public ──────────────────────────────────────────────────────
+
+
+@router.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
+# ── Sections (triage view) ──────────────────────────────────────
+
+
+@router.get("/sections", response_model=SectionList)
+async def list_sections(
+    date: str | None = None,
+    user: User = Depends(get_api_user),
+    session: AsyncSession = Depends(get_session),
+):
+    data = await get_home_sections(user, date, session)
+    sections = []
+    for section, article, confidence, reasoning in data["all_sections"]:
+        sections.append(
+            SectionItem(
+                id=section.id,
+                article_id=article.id,
+                article_title=article.title,
+                feed_title=article.feed.title if article.feed else "",
+                heading=section.heading,
+                summary=section.summary,
+                topic_tags=section.tags_list,
+                score=confidence,
+                reasoning=reasoning,
+                is_surprise=section.id in data["surprise_ids"],
+                has_humor=section.has_humor,
+                has_surprise_data=section.has_surprise_data,
+                has_actionable_advice=section.has_actionable_advice,
+                article_url=article.url,
+                published_at=article.published_at,
+            )
+        )
+    return SectionList(
+        sections=sections,
+        date=data["date"],
+        dates_available=data["available_dates"],
+        threshold=data["threshold"],
+        surprise_section_ids=list(data["surprise_ids"]),
+    )
+
+
+# ── Feeds ───────────────────────────────────────────────────────
+
+
+@router.get("/feeds", response_model=FeedList)
+async def list_feeds(
+    user: User = Depends(get_api_user),
+    session: AsyncSession = Depends(get_session),
+):
+    data = await get_feeds_list(session)
+    feeds = []
+    categories: dict[str, list[int]] = {}
+    for cat, cat_feeds in data["categories"].items():
+        categories[cat] = []
+        for feed in cat_feeds:
+            article_count = len(feed.articles) if hasattr(feed, "articles") else 0
+            feeds.append(
+                FeedItem(
+                    id=feed.id,
+                    title=feed.title,
+                    url=feed.url,
+                    category=feed.category,
+                    active=feed.active,
+                    content_quality=feed.content_quality,
+                    article_count=article_count,
+                )
+            )
+            categories[cat].append(feed.id)
+    return FeedList(feeds=feeds, categories=categories)
+
+
+@router.get("/feeds/{feed_id}", response_model=FeedDetail)
+async def feed_detail(
+    feed_id: int,
+    user: User = Depends(get_api_user),
+    session: AsyncSession = Depends(get_session),
+):
+    data = await get_feed_detail(feed_id, session)
+    if not data:
+        raise HTTPException(status_code=404, detail="Feed not found")
+    feed = data["feed"]
+    articles = [
+        ArticleSummary(
+            id=a.id,
+            title=a.title,
+            url=a.url,
+            published_at=a.published_at,
+            status=a.status.value if hasattr(a.status, "value") else str(a.status),
+            section_count=len(a.sections),
+        )
+        for a in data["articles"]
+    ]
+    return FeedDetail(
+        feed=FeedItem(
+            id=feed.id,
+            title=feed.title,
+            url=feed.url,
+            category=feed.category,
+            active=feed.active,
+            content_quality=feed.content_quality,
+            article_count=len(articles),
+        ),
+        articles=articles,
+    )
+
+
+# ── Articles ────────────────────────────────────────────────────
+
+
+@router.get("/articles/{article_id}", response_model=ArticleDetail)
+async def article_detail_view(
+    article_id: int,
+    user: User = Depends(get_api_user),
+    session: AsyncSession = Depends(get_session),
+):
+    data = await get_article_detail(article_id, user, session)
+    if not data:
+        raise HTTPException(status_code=404, detail="Article not found")
+    article = data["article"]
+    sections = [
+        ArticleSection(
+            id=s.id,
+            heading=s.heading,
+            summary=s.summary,
+            topic_tags=s.tags_list,
+            score=conf,
+            reasoning=reasoning,
+            is_surprise=s.id in data["surprise_ids"],
+            has_humor=s.has_humor,
+            has_surprise_data=s.has_surprise_data,
+            has_actionable_advice=s.has_actionable_advice,
+        )
+        for s, conf, reasoning in data["scored_sections"]
+    ]
+    return ArticleDetail(
+        id=article.id,
+        title=article.title,
+        url=article.url,
+        feed_title=article.feed.title if article.feed else "",
+        published_at=article.published_at,
+        status=article.status.value if hasattr(article.status, "value") else str(article.status),
+        sections=sections,
+    )
+
+
+@router.post("/articles/{article_id}/process")
+async def process_article(
+    article_id: int,
+    user: User = Depends(get_api_user),
+):
+    from piqued.processing.pipeline import process_single_article
+
+    result = await process_single_article(article_id)
+    return {"ok": result == "processed", "result": result}
+
+
+# ── Profile ─────────────────────────────────────────────────────
+
+
+@router.get("/profile", response_model=UserProfileResponse)
+async def get_profile(
+    user: User = Depends(get_api_user),
+    session: AsyncSession = Depends(get_session),
+):
+    data = await get_user_profile(user, session)
+    profile = data["profile"]
+    weights = [
+        WeightItem(
+            topic=w.topic,
+            weight=w.weight,
+            feedback_count=w.feedback_count,
+            updated_at=w.updated_at,
+        )
+        for w in data["weights"]
+    ]
+    if profile:
+        return UserProfileResponse(
+            profile_text=profile.profile_text,
+            profile_version=profile.profile_version,
+            pending_feedback_count=profile.pending_feedback_count,
+            last_synthesized_at=profile.last_synthesized_at,
+            weights=weights,
+        )
+    return UserProfileResponse(
+        profile_text="",
+        profile_version=0,
+        pending_feedback_count=0,
+        last_synthesized_at=None,
+        weights=weights,
+    )
+
+
+@router.put("/profile", response_model=UserProfileResponse)
+async def edit_profile(
+    body: ProfileEditRequest,
+    user: User = Depends(get_api_user),
+    session: AsyncSession = Depends(get_session),
+):
+    profile = await session.get(UserProfile, user.id)
+    if profile:
+        profile.profile_text = body.profile_text
+        profile.profile_version += 1
+        profile.updated_at = datetime.now(timezone.utc)
+    else:
+        profile = UserProfile(
+            user_id=user.id,
+            profile_text=body.profile_text,
+            profile_version=1,
+        )
+        session.add(profile)
+    await session.commit()
+    return await get_profile(user=user, session=session)
+
+
+@router.post("/profile/synthesize")
+async def synthesize_profile(
+    user: User = Depends(get_api_user),
+    session: AsyncSession = Depends(get_session),
+):
+    profile = await session.get(UserProfile, user.id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="No profile to synthesize")
+
+    import asyncio
+
+    from piqued.feedback.router import _trigger_synthesis
+
+    asyncio.create_task(_trigger_synthesis(user.id))
+    return {"ok": True, "message": "Synthesis started"}
+
+
+# ── Feedback ────────────────────────────────────────────────────
+
+
+@router.post("/feedback", response_model=FeedbackResult)
+async def api_feedback(
+    body: FeedbackRequest,
+    user: User = Depends(get_api_user),
+    session: AsyncSession = Depends(get_session),
+):
+    from piqued.feedback.router import FeedbackRequest as InternalFBRequest
+    from piqued.feedback.router import submit_feedback
+
+    result = await submit_feedback(
+        InternalFBRequest(
+            section_id=body.section_id,
+            rating=body.rating,
+            reason=body.reason,
+        ),
+        user=user,
+        session=session,
+    )
+    return FeedbackResult(ok=result.ok, direction=result.direction)
+
+
+@router.post("/click-through")
+async def api_click_through(
+    section_id: int,
+    user: User = Depends(get_api_user),
+    session: AsyncSession = Depends(get_session),
+):
+    from piqued.feedback.router import FeedbackRequest as InternalFBRequest
+    from piqued.feedback.router import submit_feedback
+
+    result = await submit_feedback(
+        InternalFBRequest(section_id=section_id, rating=1, source="click_through"),
+        user=user,
+        session=session,
+    )
+    return {"ok": result.ok}
+
+
+@router.post("/downweight")
+async def api_downweight(
+    tag: str,
+    user: User = Depends(get_api_user),
+    session: AsyncSession = Depends(get_session),
+):
+    from piqued.feedback.router import DownweightRequest, downweight_tag
+
+    result = await downweight_tag(
+        DownweightRequest(tag=tag), user=user, session=session
+    )
+    return result
+
+
+# ── Settings ────────────────────────────────────────────────────
+
+
+@router.get("/settings", response_model=SettingsResponse)
+async def get_settings(
+    user: User = Depends(get_api_user),
+    session: AsyncSession = Depends(get_session),
+):
+    data = await get_settings_data(user, session)
+    return SettingsResponse(
+        settings=data["current"],
+        is_admin=data["is_admin"],
+    )
+
+
+@router.put("/settings", response_model=SettingsResponse)
+async def save_settings_api(
+    settings: dict[str, str],
+    admin: User = Depends(require_api_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    settings_to_save = {}
+    for key in config.DEFAULTS:
+        if key in settings:
+            val = str(settings[key]).strip()
+            if "api_key" in key or "api_pass" in key:
+                if val == "••••••••" or not val:
+                    continue
+            settings_to_save[key] = val
+
+    if settings_to_save:
+        await config.save_settings(settings_to_save)
+        await config.load_settings_from_db()
+
+    data = await get_settings_data(admin, session)
+    return SettingsResponse(settings=data["current"], is_admin=data["is_admin"])
+
+
+# ── Processing log ──────────────────────────────────────────────
+
+
+@router.get("/log", response_model=ProcessingLogList)
+async def get_log(
+    limit: int = 100,
+    offset: int = 0,
+    user: User = Depends(get_api_user),
+    session: AsyncSession = Depends(get_session),
+):
+    data = await get_processing_log(session, limit=limit, offset=offset)
+    entries = [
+        ProcessingLogEntry(
+            id=e["log"].id,
+            article_id=e["log"].article_id,
+            article_title=e["article_title"],
+            stage=e["log"].stage,
+            status=e["log"].status,
+            detail=e["log"].detail,
+            tokens_used=e["log"].tokens_used,
+            duration_ms=e["log"].duration_ms,
+            created_at=e["log"].created_at,
+        )
+        for e in data["entries"]
+    ]
+    return ProcessingLogList(
+        entries=entries,
+        limit=data["limit"],
+        offset=data["offset"],
+        total=data["total"],
+    )
+
+
+# ── User info ───────────────────────────────────────────────────
+
+
+@router.get("/me", response_model=UserInfo)
+async def get_me(user: User = Depends(get_api_user)):
+    return UserInfo(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        role=user.role,
+    )
+
+
+# ── Admin: feeds ────────────────────────────────────────────────
+
+
+@router.post("/feeds/sync", response_model=SyncResult)
+async def sync_feeds_api(
+    admin: User = Depends(require_api_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    from piqued.ingestion.freshrss import FreshRSSClient
+
+    client = FreshRSSClient()
+    try:
+        subs = await client.get_subscriptions()
+        added = 0
+        for sub in subs:
+            feed_id = sub.get("id", "")
+            existing = await session.scalar(
+                select(Feed.id).where(Feed.freshrss_feed_id == feed_id)
+            )
+            if not existing:
+                cats = sub.get("categories", [])
+                cat = cats[0].get("label", "Uncategorized") if cats else "Uncategorized"
+                session.add(
+                    Feed(
+                        freshrss_feed_id=feed_id,
+                        title=sub.get("title", ""),
+                        url=sub.get("url", ""),
+                        category=cat,
+                        active=False,
+                    )
+                )
+                added += 1
+        await session.commit()
+        return SyncResult(ok=True, total=len(subs), added=added)
+    finally:
+        await client.close()
+
+
+@router.post("/feeds/{feed_id}/toggle")
+async def toggle_feed_api(
+    feed_id: int,
+    admin: User = Depends(require_api_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    feed = await session.get(Feed, feed_id)
+    if not feed:
+        raise HTTPException(status_code=404, detail="Feed not found")
+    feed.active = not feed.active
+    await session.commit()
+    return FeedItem(
+        id=feed.id,
+        title=feed.title,
+        url=feed.url,
+        category=feed.category,
+        active=feed.active,
+        content_quality=feed.content_quality,
+        article_count=0,
+    )
+
+
+# ── Admin: users ────────────────────────────────────────────────
+
+
+@router.get("/users", response_model=UserList)
+async def list_users(
+    admin: User = Depends(require_api_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(select(User).order_by(User.created_at))
+    users = [
+        UserInfo(id=u.id, username=u.username, email=u.email, role=u.role)
+        for u in result.scalars()
+    ]
+    return UserList(users=users)
+
+
+@router.post("/users", response_model=UserInfo)
+async def create_user_api(
+    username: str,
+    password: str,
+    role: str = "user",
+    admin: User = Depends(require_api_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    import bcrypt
+
+    if role not in ("admin", "user"):
+        role = "user"
+    existing = await session.scalar(select(User).where(User.username == username))
+    if existing:
+        raise HTTPException(status_code=409, detail="Username already exists")
+    new_user = User(
+        username=username,
+        password_hash=bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8"),
+        role=role,
+        role_source="manual",
+    )
+    session.add(new_user)
+    await session.commit()
+    return UserInfo(
+        id=new_user.id,
+        username=new_user.username,
+        email=new_user.email,
+        role=new_user.role,
+    )
+
+
+@router.put("/users/{user_id}/role", response_model=UserInfo)
+async def change_role_api(
+    user_id: int,
+    role: str,
+    admin: User = Depends(require_api_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    if role not in ("admin", "user"):
+        role = "user"
+    target = await session.get(User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.id == admin.id and role != "admin":
+        raise HTTPException(status_code=400, detail="Cannot demote yourself")
+    target.role = role
+    target.role_source = "manual"
+    await session.commit()
+    return UserInfo(
+        id=target.id,
+        username=target.username,
+        email=target.email,
+        role=target.role,
+    )
+
+
+# ── API keys ────────────────────────────────────────────────────
+
+
+@router.post("/keys", response_model=ApiKeyCreated)
+async def create_api_key(
+    body: ApiKeyCreate,
+    user: User = Depends(get_api_user),
+    session: AsyncSession = Depends(get_session),
+):
+    raw = secrets.token_hex(16)
+    full_key = f"{KEY_PREFIX}{raw}"
+    prefix = raw[:8]
+    key_hash = hashlib.sha256(full_key.encode("utf-8")).hexdigest()
+
+    api_key = ApiKey(
+        user_id=user.id,
+        key_prefix=prefix,
+        key_hash=key_hash,
+        name=body.name,
+    )
+    session.add(api_key)
+    await session.commit()
+    return ApiKeyCreated(id=api_key.id, name=api_key.name, key=full_key)
+
+
+@router.get("/keys", response_model=ApiKeyList)
+async def list_api_keys(
+    user: User = Depends(get_api_user),
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(
+        select(ApiKey)
+        .where(ApiKey.user_id == user.id)
+        .order_by(ApiKey.created_at.desc())
+    )
+    keys = [
+        ApiKeyItem(
+            id=k.id,
+            name=k.name,
+            last_used_at=k.last_used_at,
+            created_at=k.created_at,
+        )
+        for k in result.scalars()
+    ]
+    return ApiKeyList(keys=keys)
+
+
+@router.delete("/keys/{key_id}")
+async def revoke_api_key(
+    key_id: int,
+    user: User = Depends(get_api_user),
+    session: AsyncSession = Depends(get_session),
+):
+    api_key = await session.get(ApiKey, key_id)
+    if not api_key or api_key.user_id != user.id:
+        raise HTTPException(status_code=404, detail="API key not found")
+    await session.delete(api_key)
+    await session.commit()
+    return {"ok": True}

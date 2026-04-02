@@ -133,7 +133,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
 
         path = request.url.path
 
-        if path in self.PUBLIC_PATHS or path.startswith("/static"):
+        if path in self.PUBLIC_PATHS or path.startswith(("/static", "/api/v1/")):
             return await call_next(request)
 
         if not config.is_configured():
@@ -190,10 +190,14 @@ app.add_middleware(SessionMiddleware, secret_key=session_secret)
 
 
 # Include routers
+from piqued.api.v1.feed_xml import router as api_v1_feed_router  # noqa: E402
+from piqued.api.v1.router import router as api_v1_router  # noqa: E402
 from piqued.auth.router import router as auth_router  # noqa: E402
 from piqued.feedback.router import router as feedback_router  # noqa: E402
 from piqued.web.router import router as web_router  # noqa: E402
 
+app.include_router(api_v1_router)
+app.include_router(api_v1_feed_router)
 app.include_router(auth_router)
 app.include_router(feedback_router)
 app.include_router(web_router)
