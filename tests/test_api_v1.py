@@ -10,9 +10,9 @@ from httpx import ASGITransport, AsyncClient
 os.environ["PIQUED_DATABASE_PATH"] = "/tmp/piqued_test_api_v1.db"
 
 from piqued import config
-from piqued.db import engine, get_session
+from piqued.db import engine
 from piqued.main import app
-from piqued.models import ApiKey, Base, Feed, User
+from piqued.models import ApiKey, Base, User
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -38,8 +38,6 @@ def transport():
 async def _create_user(role="admin") -> tuple[User, str]:
     """Create a user and API key, return (user, bearer_token)."""
     import secrets
-
-    from sqlalchemy.ext.asyncio import AsyncSession
 
     from piqued.db import async_session
 
