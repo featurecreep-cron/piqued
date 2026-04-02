@@ -55,6 +55,9 @@ DEFAULTS = {
     "profile_synthesis_threshold": "3",  # feedback count before synthesis
     "profile_max_words": "500",
     "scoring_batch_size": "50",
+    # Interest decay
+    "interest_decay_rate": "0.05",  # weight reduction per decay cycle
+    "interest_decay_after_days": "14",  # days without reinforcement before decay
     # LLM - scoring override (optional, use cheap/fast model)
     "llm_scoring_provider": "",  # empty = use classify override or primary
     "llm_scoring_model": "",

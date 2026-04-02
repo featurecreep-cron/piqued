@@ -46,6 +46,7 @@ async def lifespan(app: FastAPI):
 
 def _start_scheduler():
     """Start the polling scheduler. Safe to call multiple times."""
+    from piqued.feedback.learner import apply_interest_decay
     from piqued.processing.pipeline import run_pipeline
 
     if scheduler.running:
@@ -59,8 +60,17 @@ def _start_scheduler():
         id="feed_poll",
         replace_existing=True,
     )
+    # Nightly interest decay at 3:00 AM
+    scheduler.add_job(
+        apply_interest_decay,
+        "cron",
+        hour=3,
+        minute=0,
+        id="interest_decay",
+        replace_existing=True,
+    )
     scheduler.start()
-    logger.info("Scheduler started: polling every %d minutes", interval)
+    logger.info("Scheduler started: polling every %d minutes, nightly decay at 03:00", interval)
 
 
 async def _seed_feeds():

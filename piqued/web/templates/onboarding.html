@@ -33,7 +33,13 @@
             </label>
         {% endfor %}
 
-        <button type="submit" style="margin-top: 1.5rem; width: 100%;">Start Reading</button>
+        <div style="margin-top: 1.5rem;">
+            <label for="interests"><strong>Describe your interests</strong> <small style="color: var(--pico-muted-color);">(optional)</small></label>
+            <textarea id="interests" name="interests" rows="4" placeholder="e.g. AI capabilities research, homelab Docker setups, constitutional law (especially individual rights), cocktail science. Not interested in crypto or sports."></textarea>
+            <small style="color: var(--pico-muted-color);">This seeds your interest profile so scoring starts meaningful from day one. You can always edit it later in Settings.</small>
+        </div>
+
+        <button type="submit" style="margin-top: 1rem; width: 100%;">Start Reading</button>
     </form>
     {% else %}
     <p>No feeds found. Check your FreshRSS connection in <a href="/settings">Settings</a>.</p>

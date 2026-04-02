@@ -450,6 +450,8 @@ async def save_settings(request: Request, admin: User = Depends(require_admin)):
         "max_retries": (1, 10),
         "confidence_threshold": (0.0, 1.0),
         "surprise_surface_pct": (0.0, 0.5),
+        "interest_decay_rate": (0.0, 0.5),
+        "interest_decay_after_days": (1, 365),
     }
     for key, (lo, hi) in BOUNDS.items():
         if key in settings_to_save:
@@ -469,6 +471,53 @@ async def save_settings(request: Request, admin: User = Depends(require_admin)):
         _start_scheduler()
 
     return RedirectResponse(url="/settings", status_code=303)
+
+
+@router.post("/settings/profile")
+async def save_profile(
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Save user's edited interest profile. Bumps version, invalidates stale scores."""
+    form = await request.form()
+    profile_text = str(form.get("profile_text", "")).strip()
+
+    profile = await session.get(UserProfile, user.id)
+    if profile:
+        profile.profile_text = profile_text
+        profile.profile_version += 1
+        profile.updated_at = datetime.now(timezone.utc)
+    else:
+        profile = UserProfile(
+            user_id=user.id,
+            profile_text=profile_text,
+            profile_version=1,
+        )
+        session.add(profile)
+
+    await session.commit()
+    logger.info("Profile edited by user=%s, now v%d", user.username, profile.profile_version)
+    return RedirectResponse(url="/settings", status_code=303)
+
+
+@router.post("/settings/profile/synthesize")
+async def synthesize_profile_now(
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Manually trigger profile synthesis from accumulated feedback."""
+    profile = await session.get(UserProfile, user.id)
+    if not profile:
+        return RedirectResponse(url="/settings?error=No+profile+to+synthesize", status_code=303)
+
+    # Trigger synthesis in background
+    import asyncio
+    from piqued.feedback.router import _trigger_synthesis
+    asyncio.create_task(_trigger_synthesis(user.id))
+
+    return RedirectResponse(url="/settings?msg=Synthesis+started", status_code=303)
 
 
 @router.post("/admin/user/create")
@@ -627,11 +676,15 @@ async def onboarding_activate_feeds(
             feed.active = True
             activated += 1
 
-    # Create empty profile for this user (enables LLM scoring)
+    # Create profile for this user, seeded with interests if provided
+    interests = str(form.get("interests", "")).strip()
     profile = await session.get(UserProfile, user.id)
     if not profile:
-        profile = UserProfile(user_id=user.id, profile_text="")
+        profile = UserProfile(user_id=user.id, profile_text=interests)
         session.add(profile)
+    elif interests and not profile.profile_text:
+        profile.profile_text = interests
+        profile.profile_version += 1
 
     await session.commit()
     logger.info("Onboarding complete: user=%s activated=%d feeds", user.username, activated)

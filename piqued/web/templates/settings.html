@@ -167,6 +167,20 @@
                     </select>
                 </div>
             </div>
+            <div class="grid">
+                <div>
+                    <label for="interest_decay_rate">Interest decay rate</label>
+                    <input type="number" id="interest_decay_rate" name="interest_decay_rate"
+                           value="{{ current.interest_decay_rate }}" min="0" max="0.5" step="0.01">
+                    <small>Weight reduction per nightly cycle (0 = disabled)</small>
+                </div>
+                <div>
+                    <label for="interest_decay_after_days">Decay after (days)</label>
+                    <input type="number" id="interest_decay_after_days" name="interest_decay_after_days"
+                           value="{{ current.interest_decay_after_days }}" min="1" max="365">
+                    <small>Days without reinforcement before decay starts</small>
+                </div>
+            </div>
         </fieldset>
     </details>
 
@@ -280,13 +294,25 @@
             {% endif %}
         </small>
     </div>
-    <div style="white-space: pre-wrap; font-size: 0.9em; line-height: 1.6;">{{ user_profile.profile_text }}</div>
+    <form method="post" action="/settings/profile">
+        <input type="hidden" name="_csrf" value="{{ request.state.csrf }}">
+        <textarea name="profile_text" rows="10" style="font-size: 0.9em; line-height: 1.6; width: 100%;">{{ user_profile.profile_text }}</textarea>
+        <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+            <button type="submit" style="font-size: 0.85rem; padding: 0.3rem 1rem;">Save Profile</button>
+            <button type="submit" formaction="/settings/profile/synthesize" style="font-size: 0.85rem; padding: 0.3rem 1rem;" class="outline">Synthesize Now</button>
+        </div>
+    </form>
 </article>
 {% else %}
 <article style="padding: 1rem; border-radius: 8px; border-style: dashed;">
     <p style="color: var(--pico-muted-color); margin: 0;">
         No profile yet. Piqued builds your interest profile automatically as you read and give feedback on articles.
     </p>
+    <form method="post" action="/settings/profile">
+        <input type="hidden" name="_csrf" value="{{ request.state.csrf }}">
+        <textarea name="profile_text" rows="6" placeholder="Describe your interests — what topics you care about, what you don't, any nuances. Or leave blank and let feedback build it." style="font-size: 0.9em; line-height: 1.6; width: 100%; margin-top: 0.75rem;"></textarea>
+        <button type="submit" style="font-size: 0.85rem; padding: 0.3rem 1rem; margin-top: 0.5rem;">Save Profile</button>
+    </form>
 </article>
 {% endif %}
 
