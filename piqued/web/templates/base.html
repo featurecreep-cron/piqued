@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="light">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -9,6 +9,21 @@
     <meta name="csrf-token" content="{{ request.state.csrf }}">
     {% endif %}
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <script>
+        // Apply saved theme before render to prevent flash
+        (function() {
+            var saved = localStorage.getItem('piqued-theme');
+            if (saved) document.documentElement.setAttribute('data-theme', saved);
+        })();
+        function toggleTheme() {
+            var current = document.documentElement.getAttribute('data-theme');
+            var next = current === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', next);
+            localStorage.setItem('piqued-theme', next);
+            var btn = document.getElementById('theme-toggle');
+            if (btn) btn.textContent = next === 'dark' ? '☀️' : '🌙';
+        }
+    </script>
     <style>
         :root {
             --pico-font-size: 15px;
@@ -205,11 +220,20 @@
             <li><small>{{ current_user.username }}</small></li>
             <li><a href="/logout" style="font-size: 0.85rem;">Logout</a></li>
             {% endif %}
+            <li><a href="#" onclick="toggleTheme(); return false;" style="font-size: 0.85rem;" id="theme-toggle" aria-label="Toggle theme">🌙</a></li>
         </ul>
     </nav>
     <main class="container">
         {% block content %}{% endblock %}
     </main>
+    <script>
+        // Update theme toggle icon on load
+        (function() {
+            var theme = document.documentElement.getAttribute('data-theme');
+            var btn = document.getElementById('theme-toggle');
+            if (btn) btn.textContent = theme === 'dark' ? '☀️' : '🌙';
+        })();
+    </script>
     {% block scripts %}{% endblock %}
 </body>
 </html>
