@@ -86,7 +86,9 @@ async def synthesize_profile(
 
         logger.info(
             "Profile synthesized (%d tokens): %d feedback items → %d words",
-            response.tokens_used, len(feedback_batch), len(profile.split()),
+            response.tokens_used,
+            len(feedback_batch),
+            len(profile.split()),
         )
         return profile, response.tokens_used
 

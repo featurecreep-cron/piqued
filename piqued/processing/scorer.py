@@ -66,9 +66,7 @@ def select_surprise_sections(
     Returns:
         Set of section IDs to mark as surprise/discovery.
     """
-    below = [
-        (sid, score) for sid, score in section_ids_and_scores if score < threshold
-    ]
+    below = [(sid, score) for sid, score in section_ids_and_scores if score < threshold]
     if not below:
         return set()
 

@@ -82,9 +82,7 @@ class FreshRSSClient:
 
     async def get_subscriptions(self) -> list[dict]:
         """Get all subscribed feeds."""
-        data = await self._api_get(
-            "reader/api/0/subscription/list", {"output": "json"}
-        )
+        data = await self._api_get("reader/api/0/subscription/list", {"output": "json"})
         return data.get("subscriptions", [])
 
     async def get_stream_items(
@@ -111,9 +109,7 @@ class FreshRSSClient:
         if continuation:
             params["c"] = continuation
 
-        data = await self._api_get(
-            f"reader/api/0/stream/contents/{stream_id}", params
-        )
+        data = await self._api_get(f"reader/api/0/stream/contents/{stream_id}", params)
 
         items = []
         for entry in data.get("items", []):
@@ -134,7 +130,11 @@ class FreshRSSClient:
                     url = alt.get("href", "")
                     break
             if not url:
-                url = entry.get("canonical", [{}])[0].get("href", "") if entry.get("canonical") else ""
+                url = (
+                    entry.get("canonical", [{}])[0].get("href", "")
+                    if entry.get("canonical")
+                    else ""
+                )
 
             items.append(
                 FeedItem(

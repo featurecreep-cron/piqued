@@ -6,7 +6,7 @@ import pytest
 
 os.environ["PIQUED_DATABASE_PATH"] = "/tmp/piqued_test_profile.db"
 
-from piqued.processing.profile_scorer import _parse_scoring_response, ScoredSection
+from piqued.processing.profile_scorer import _parse_scoring_response
 from piqued.feedback.synthesizer import _format_feedback
 
 
@@ -18,10 +18,12 @@ class TestScoreResponseParsing:
             {"id": 10, "index": 0, "heading": "Test 1"},
             {"id": 20, "index": 1, "heading": "Test 2"},
         ]
-        response = json.dumps([
-            {"index": 0, "score": 0.8, "reasoning": "Matches interest in law"},
-            {"index": 1, "score": 0.3, "reasoning": "Not relevant"},
-        ])
+        response = json.dumps(
+            [
+                {"index": 0, "score": 0.8, "reasoning": "Matches interest in law"},
+                {"index": 1, "score": 0.3, "reasoning": "Not relevant"},
+            ]
+        )
         results = _parse_scoring_response(response, sections)
         assert len(results) == 2
         assert results[0].section_id == 10
@@ -31,26 +33,32 @@ class TestScoreResponseParsing:
 
     def test_parse_clamps_scores(self):
         sections = [{"id": 1, "index": 0, "heading": "Test"}]
-        response = json.dumps([
-            {"index": 0, "score": 1.5, "reasoning": "Over max"},
-        ])
+        response = json.dumps(
+            [
+                {"index": 0, "score": 1.5, "reasoning": "Over max"},
+            ]
+        )
         results = _parse_scoring_response(response, sections)
         assert results[0].score == 1.0
 
     def test_parse_negative_clamp(self):
         sections = [{"id": 1, "index": 0, "heading": "Test"}]
-        response = json.dumps([
-            {"index": 0, "score": -0.5, "reasoning": "Under min"},
-        ])
+        response = json.dumps(
+            [
+                {"index": 0, "score": -0.5, "reasoning": "Under min"},
+            ]
+        )
         results = _parse_scoring_response(response, sections)
         assert results[0].score == 0.0
 
     def test_parse_skips_unknown_indices(self):
         sections = [{"id": 1, "index": 0, "heading": "Test"}]
-        response = json.dumps([
-            {"index": 0, "score": 0.5, "reasoning": "Valid"},
-            {"index": 99, "score": 0.9, "reasoning": "No matching section"},
-        ])
+        response = json.dumps(
+            [
+                {"index": 0, "score": 0.5, "reasoning": "Valid"},
+                {"index": 99, "score": 0.9, "reasoning": "No matching section"},
+            ]
+        )
         results = _parse_scoring_response(response, sections)
         assert len(results) == 1
         assert results[0].section_id == 1
@@ -77,14 +85,28 @@ class TestFeedbackFormatting:
     """Test feedback item formatting for synthesis prompt."""
 
     def test_format_positive_feedback(self):
-        items = [{"heading": "Great Article", "tags": ["law", "rights"], "rating": 1, "reason": ""}]
+        items = [
+            {
+                "heading": "Great Article",
+                "tags": ["law", "rights"],
+                "rating": 1,
+                "reason": "",
+            }
+        ]
         result = _format_feedback(items)
         assert "👍 Liked" in result
         assert "Great Article" in result
         assert "law, rights" in result
 
     def test_format_negative_with_reason(self):
-        items = [{"heading": "Boring", "tags": ["sports"], "rating": -1, "reason": "Don't care about sports"}]
+        items = [
+            {
+                "heading": "Boring",
+                "tags": ["sports"],
+                "rating": -1,
+                "reason": "Don't care about sports",
+            }
+        ]
         result = _format_feedback(items)
         assert "👎 Disliked" in result
         assert "Don't care about sports" in result
@@ -107,18 +129,21 @@ class TestModelEnums:
 
     def test_user_profile_model_exists(self):
         from piqued.models import UserProfile
+
         assert hasattr(UserProfile, "profile_text")
         assert hasattr(UserProfile, "profile_version")
         assert hasattr(UserProfile, "pending_feedback_count")
 
     def test_section_score_model_exists(self):
         from piqued.models import SectionScore
+
         assert hasattr(SectionScore, "score")
         assert hasattr(SectionScore, "reasoning")
         assert hasattr(SectionScore, "profile_version")
 
     def test_user_has_profile_relationship(self):
         from piqued.models import User
+
         assert "profile" in User.__mapper__.relationships
 
 
@@ -128,14 +153,19 @@ class TestRouterIntegrity:
     def test_no_undefined_user_in_templates(self):
         """Every route that passes current_user to template must have user dependency."""
         import re
+
         with open("piqued/web/router.py") as f:
             source = f.read()
 
         # Find function definitions and check for user dependency
-        func_pattern = re.compile(r'(async def \w+\([^)]*\).*?)(?=async def |\Z)', re.DOTALL)
+        func_pattern = re.compile(
+            r"(async def \w+\([^)]*\).*?)(?=async def |\Z)", re.DOTALL
+        )
         for match in func_pattern.finditer(source):
             block = match.group(1)
             if '"current_user": user' in block or "'current_user': user" in block:
-                has_dep = 'get_current_user' in block or 'require_admin' in block
-                func_name = re.search(r'async def (\w+)', block).group(1)
-                assert has_dep, f"{func_name} passes 'user' to template but has no user dependency"
+                has_dep = "get_current_user" in block or "require_admin" in block
+                func_name = re.search(r"async def (\w+)", block).group(1)
+                assert has_dep, (
+                    f"{func_name} passes 'user' to template but has no user dependency"
+                )

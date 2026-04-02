@@ -1,12 +1,10 @@
 """Tests for web flows: setup, login, CSRF, onboarding."""
 
-import asyncio
 import os
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
 
 # Set test DB before any imports
 os.environ["PIQUED_DATABASE_PATH"] = "/tmp/piqued_test_web.db"
@@ -28,8 +26,10 @@ async def setup_db():
     config._cache["llm_api_key"] = "test-key"
     config._cache["freshrss_api_pass"] = "test-pass"
     config._cache["session_secret_key"] = "test-secret-key-for-testing"
+    config._cache_loaded = True
     yield
     config._cache.clear()
+    config._cache_loaded = False
 
 
 @pytest.fixture
@@ -49,9 +49,11 @@ class TestModelEnums:
             source = f.read()
 
         # Find all ArticleStatus.XXX references
-        refs = re.findall(r'ArticleStatus\.(\w+)', source)
+        refs = re.findall(r"ArticleStatus\.(\w+)", source)
         for ref in refs:
-            assert hasattr(ArticleStatus, ref), f"ArticleStatus.{ref} does not exist. Valid: {[e.name for e in ArticleStatus]}"
+            assert hasattr(ArticleStatus, ref), (
+                f"ArticleStatus.{ref} does not exist. Valid: {[e.name for e in ArticleStatus]}"
+            )
 
 
 class TestHealth:
@@ -81,15 +83,19 @@ class TestSetup:
         import bcrypt
 
         async with async_session() as session:
-            session.add(User(
-                username="existing",
-                password_hash=bcrypt.hashpw(b"test", bcrypt.gensalt()).decode(),
-                role="admin",
-                role_source="auto",
-            ))
+            session.add(
+                User(
+                    username="existing",
+                    password_hash=bcrypt.hashpw(b"test", bcrypt.gensalt()).decode(),
+                    role="admin",
+                    role_source="auto",
+                )
+            )
             await session.commit()
 
-        async with AsyncClient(transport=transport, base_url="http://test", follow_redirects=False) as client:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", follow_redirects=False
+        ) as client:
             r = await client.get("/setup")
             assert r.status_code == 303
             assert "/login" in r.headers["location"]
@@ -104,27 +110,35 @@ class TestCSRF:
 
         # Create user first
         async with async_session() as session:
-            session.add(User(
-                username="testuser",
-                password_hash=bcrypt.hashpw(b"testpass", bcrypt.gensalt()).decode(),
-                role="admin",
-                role_source="auto",
-            ))
+            session.add(
+                User(
+                    username="testuser",
+                    password_hash=bcrypt.hashpw(b"testpass", bcrypt.gensalt()).decode(),
+                    role="admin",
+                    role_source="auto",
+                )
+            )
             await session.commit()
 
-        async with AsyncClient(transport=transport, base_url="http://test", follow_redirects=False) as client:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", follow_redirects=False
+        ) as client:
             # Login to get session
             r = await client.get("/login")
             # Extract CSRF from login page
             import re
+
             csrf_match = re.search(r'name="_csrf" value="([^"]+)"', r.text)
             csrf = csrf_match.group(1) if csrf_match else ""
 
-            r = await client.post("/login", data={
-                "username": "testuser",
-                "password": "testpass",
-                "_csrf": csrf,
-            })
+            r = await client.post(
+                "/login",
+                data={
+                    "username": "testuser",
+                    "password": "testpass",
+                    "_csrf": csrf,
+                },
+            )
             assert r.status_code == 303  # redirect after login
 
             # Now POST to settings WITHOUT csrf
@@ -139,25 +153,33 @@ class TestCSRF:
         import bcrypt
 
         async with async_session() as session:
-            session.add(User(
-                username="testuser",
-                password_hash=bcrypt.hashpw(b"testpass", bcrypt.gensalt()).decode(),
-                role="admin",
-                role_source="auto",
-            ))
+            session.add(
+                User(
+                    username="testuser",
+                    password_hash=bcrypt.hashpw(b"testpass", bcrypt.gensalt()).decode(),
+                    role="admin",
+                    role_source="auto",
+                )
+            )
             await session.commit()
 
-        async with AsyncClient(transport=transport, base_url="http://test", follow_redirects=False) as client:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", follow_redirects=False
+        ) as client:
             # Login
             r = await client.get("/login")
             import re
+
             csrf_match = re.search(r'name="_csrf" value="([^"]+)"', r.text)
             csrf = csrf_match.group(1) if csrf_match else ""
-            r = await client.post("/login", data={
-                "username": "testuser",
-                "password": "testpass",
-                "_csrf": csrf,
-            })
+            r = await client.post(
+                "/login",
+                data={
+                    "username": "testuser",
+                    "password": "testpass",
+                    "_csrf": csrf,
+                },
+            )
             assert r.status_code == 303
 
             # Get a page to obtain the session CSRF
@@ -169,11 +191,14 @@ class TestCSRF:
             assert new_csrf, "CSRF token should be present in settings page"
 
             # POST with valid CSRF — should not get 403
-            r = await client.post("/settings", data={
-                "_csrf": new_csrf,
-                "llm_provider": "gemini",
-                "llm_model": "gemini-2.5-flash",
-            })
+            r = await client.post(
+                "/settings",
+                data={
+                    "_csrf": new_csrf,
+                    "llm_provider": "gemini",
+                    "llm_model": "gemini-2.5-flash",
+                },
+            )
             # Should redirect (303) on success, not 403
             assert r.status_code != 403
 
@@ -187,31 +212,41 @@ class TestFormBodyPreservation:
 
         # Create user + feeds
         async with async_session() as session:
-            session.add(User(
-                username="testuser",
-                password_hash=bcrypt.hashpw(b"testpass", bcrypt.gensalt()).decode(),
-                role="admin",
-                role_source="auto",
-            ))
-            session.add(Feed(
-                freshrss_feed_id="feed/1",
-                title="Test Feed",
-                url="http://example.com/feed",
-                active=False,
-            ))
+            session.add(
+                User(
+                    username="testuser",
+                    password_hash=bcrypt.hashpw(b"testpass", bcrypt.gensalt()).decode(),
+                    role="admin",
+                    role_source="auto",
+                )
+            )
+            session.add(
+                Feed(
+                    freshrss_feed_id="feed/1",
+                    title="Test Feed",
+                    url="http://example.com/feed",
+                    active=False,
+                )
+            )
             await session.commit()
 
-        async with AsyncClient(transport=transport, base_url="http://test", follow_redirects=False) as client:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", follow_redirects=False
+        ) as client:
             # Login
             r = await client.get("/login")
             import re
+
             csrf_match = re.search(r'name="_csrf" value="([^"]+)"', r.text)
             csrf = csrf_match.group(1) if csrf_match else ""
-            r = await client.post("/login", data={
-                "username": "testuser",
-                "password": "testpass",
-                "_csrf": csrf,
-            })
+            r = await client.post(
+                "/login",
+                data={
+                    "username": "testuser",
+                    "password": "testpass",
+                    "_csrf": csrf,
+                },
+            )
 
             # Get onboarding page to get CSRF
             r = await client.get("/onboarding")
@@ -219,10 +254,15 @@ class TestFormBodyPreservation:
             new_csrf = csrf_match.group(1) if csrf_match else ""
 
             # Submit feed selection — feed_id=1 should be available to handler
-            r = await client.post("/onboarding/select-feed", data={
-                "_csrf": new_csrf,
-                "feed_id": "1",
-            })
+            r = await client.post(
+                "/onboarding/select-feed",
+                data={
+                    "_csrf": new_csrf,
+                    "feed_id": "1",
+                },
+            )
             # Should NOT be "Feed not found" (feed_id=0) — that means body was consumed
             if r.status_code == 200:
-                assert "feed_id=0" not in r.text, "Form body was consumed by middleware — feed_id not available to handler"
+                assert "feed_id=0" not in r.text, (
+                    "Form body was consumed by middleware — feed_id not available to handler"
+                )

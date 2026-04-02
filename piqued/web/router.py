@@ -4,7 +4,6 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
-import yaml
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -23,7 +22,6 @@ from piqued.models import (
     Feedback,
     InterestWeight,
     ProcessingLog,
-    Section,
     SectionScore,
     User,
     UserProfile,
@@ -38,6 +36,7 @@ async def ensure_csrf_dep(request: Request):
     try:
         if "csrf" not in request.session:
             import secrets
+
             request.session["csrf"] = secrets.token_hex(16)
         request.state.csrf = request.session["csrf"]
     except (AssertionError, AttributeError):
@@ -46,9 +45,7 @@ async def ensure_csrf_dep(request: Request):
 
 router = APIRouter(tags=["web"], dependencies=[Depends(ensure_csrf_dep)])
 
-templates = Jinja2Templates(
-    directory=str(Path(__file__).parent / "templates")
-)
+templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 
 async def _get_section_scores(
@@ -73,8 +70,7 @@ async def _get_section_scores(
         current_version = profile.profile_version if profile else 0
 
         cached = await session.execute(
-            select(SectionScore)
-            .where(
+            select(SectionScore).where(
                 SectionScore.user_id == user.id,
                 SectionScore.section_id.in_(section_ids),
                 SectionScore.profile_version >= current_version,
@@ -87,7 +83,9 @@ async def _get_section_scores(
     if scoring_mode in ("hybrid", "formula"):
         for section in sections:
             if section.id not in scores:
-                confidence = score_section(tag_weights, section.tags_list, total_feedback)
+                confidence = score_section(
+                    tag_weights, section.tags_list, total_feedback
+                )
                 scores[section.id] = (confidence, None)
     else:
         # Pure LLM mode — uncached sections get neutral score
@@ -119,7 +117,7 @@ async def home_view(
     # Redirect to onboarding only if no active feeds (true fresh start)
     if not articles:
         active_feeds = await session.scalar(
-            select(func.count()).select_from(Feed).where(Feed.active == True)
+            select(func.count()).select_from(Feed).where(Feed.active.is_(True))
         )
         if not active_feeds:
             return RedirectResponse(url="/onboarding", status_code=303)
@@ -135,7 +133,9 @@ async def home_view(
 
     # Hybrid scoring: cached LLM scores → formula fallback
     all_flat_sections = [s for a in articles for s in a.sections]
-    score_map = await _get_section_scores(session, user, all_flat_sections, tag_weights, total_feedback)
+    score_map = await _get_section_scores(
+        session, user, all_flat_sections, tag_weights, total_feedback
+    )
 
     all_sections = []
     for article in articles:
@@ -236,7 +236,9 @@ async def article_view(
     weights = {topic: w.weight for topic, w in user_weights.items()}
 
     # Hybrid scoring
-    score_map = await _get_section_scores(session, user, article.sections, tag_weights, total_feedback)
+    score_map = await _get_section_scores(
+        session, user, article.sections, tag_weights, total_feedback
+    )
 
     scored_sections = []
     for section in article.sections:
@@ -248,7 +250,9 @@ async def article_view(
     threshold = config.get_float("confidence_threshold")
     section_scores = [(s.id, conf) for s, conf, _ in scored_sections]
     surprise_ids = select_surprise_sections(
-        section_scores, threshold, config.get_float("surprise_surface_pct"),
+        section_scores,
+        threshold,
+        config.get_float("surprise_surface_pct"),
         article.digest_date,
     )
 
@@ -271,7 +275,9 @@ async def article_view(
 
 @router.get("/feeds", response_class=HTMLResponse)
 async def feeds_page(
-    request: Request, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
 ):
     """Feed management page, grouped by category."""
     result = await session.execute(select(Feed).order_by(Feed.category, Feed.title))
@@ -279,17 +285,28 @@ async def feeds_page(
 
     # Group by category
     from collections import defaultdict
+
     categories: dict[str, list] = defaultdict(list)
     for feed in feeds:
         categories[feed.category].append(feed)
 
     return templates.TemplateResponse(
-        request, "feeds.html", {"categories": dict(categories), "feed_count": len(feeds), "current_user": user}
+        request,
+        "feeds.html",
+        {
+            "categories": dict(categories),
+            "feed_count": len(feeds),
+            "current_user": user,
+        },
     )
 
 
 @router.post("/feeds/toggle/{feed_id}")
-async def toggle_feed(feed_id: int, user: User = Depends(require_admin), session: AsyncSession = Depends(get_session)):
+async def toggle_feed(
+    feed_id: int,
+    user: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
     """Toggle a feed's active status."""
     feed = await session.get(Feed, feed_id)
     if not feed:
@@ -300,7 +317,9 @@ async def toggle_feed(feed_id: int, user: User = Depends(require_admin), session
 
 
 @router.post("/feeds/sync")
-async def sync_feeds(user: User = Depends(require_admin), session: AsyncSession = Depends(get_session)):
+async def sync_feeds(
+    user: User = Depends(require_admin), session: AsyncSession = Depends(get_session)
+):
     """Sync feed list from FreshRSS subscriptions."""
     client = FreshRSSClient()
     try:
@@ -312,7 +331,11 @@ async def sync_feeds(user: User = Depends(require_admin), session: AsyncSession 
             url = sub.get("url", "")
             # Extract category from GReader API
             categories = sub.get("categories", [])
-            category = categories[0].get("label", "Uncategorized") if categories else "Uncategorized"
+            category = (
+                categories[0].get("label", "Uncategorized")
+                if categories
+                else "Uncategorized"
+            )
 
             existing = await session.scalar(
                 select(Feed.id).where(Feed.freshrss_feed_id == feed_id)
@@ -337,13 +360,13 @@ async def sync_feeds(user: User = Depends(require_admin), session: AsyncSession 
 
 @router.get("/log", response_class=HTMLResponse)
 async def log_page(
-    request: Request, user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
 ):
     """Processing log page."""
     result = await session.execute(
-        select(ProcessingLog)
-        .order_by(ProcessingLog.created_at.desc())
-        .limit(100)
+        select(ProcessingLog).order_by(ProcessingLog.created_at.desc()).limit(100)
     )
     logs = list(result.scalars().all())
     return templates.TemplateResponse(
@@ -433,7 +456,9 @@ async def save_settings(request: Request, admin: User = Depends(require_admin)):
 
     # Validate auth_methods — must contain at least one valid method
     if "auth_methods" in settings_to_save:
-        methods = [m.strip() for m in settings_to_save["auth_methods"].split(",") if m.strip()]
+        methods = [
+            m.strip() for m in settings_to_save["auth_methods"].split(",") if m.strip()
+        ]
         valid = {"oidc", "local", "header"}
         methods = [m for m in methods if m in valid]
         if not methods:
@@ -458,7 +483,9 @@ async def save_settings(request: Request, admin: User = Depends(require_admin)):
             try:
                 val = float(settings_to_save[key])
                 val = max(lo, min(hi, val))
-                settings_to_save[key] = str(int(val)) if isinstance(lo, int) else str(val)
+                settings_to_save[key] = (
+                    str(int(val)) if isinstance(lo, int) else str(val)
+                )
             except (ValueError, TypeError):
                 del settings_to_save[key]
 
@@ -497,7 +524,9 @@ async def save_profile(
         session.add(profile)
 
     await session.commit()
-    logger.info("Profile edited by user=%s, now v%d", user.username, profile.profile_version)
+    logger.info(
+        "Profile edited by user=%s, now v%d", user.username, profile.profile_version
+    )
     return RedirectResponse(url="/settings", status_code=303)
 
 
@@ -510,11 +539,14 @@ async def synthesize_profile_now(
     """Manually trigger profile synthesis from accumulated feedback."""
     profile = await session.get(UserProfile, user.id)
     if not profile:
-        return RedirectResponse(url="/settings?error=No+profile+to+synthesize", status_code=303)
+        return RedirectResponse(
+            url="/settings?error=No+profile+to+synthesize", status_code=303
+        )
 
     # Trigger synthesis in background
     import asyncio
     from piqued.feedback.router import _trigger_synthesis
+
     asyncio.create_task(_trigger_synthesis(user.id))
 
     return RedirectResponse(url="/settings?msg=Synthesis+started", status_code=303)
@@ -535,18 +567,24 @@ async def admin_create_user(
     role = str(form.get("role", "user"))
 
     if not username or not password:
-        return RedirectResponse(url="/settings?error=Username+and+password+required", status_code=303)
+        return RedirectResponse(
+            url="/settings?error=Username+and+password+required", status_code=303
+        )
     if role not in ("admin", "user"):
         role = "user"
 
     # Check uniqueness
     existing = await session.scalar(select(User).where(User.username == username))
     if existing:
-        return RedirectResponse(url="/settings?error=Username+already+exists", status_code=303)
+        return RedirectResponse(
+            url="/settings?error=Username+already+exists", status_code=303
+        )
 
     new_user = User(
         username=username,
-        password_hash=bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8'),
+        password_hash=bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode(
+            "utf-8"
+        ),
         role=role,
         role_source="manual",
     )
@@ -574,7 +612,9 @@ async def admin_change_role(
 
     # Don't let admin demote themselves
     if target.id == admin.id and new_role != "admin":
-        return RedirectResponse(url="/settings?error=Cannot+demote+yourself", status_code=303)
+        return RedirectResponse(
+            url="/settings?error=Cannot+demote+yourself", status_code=303
+        )
 
     target.role = new_role
     target.role_source = "manual"
@@ -603,7 +643,7 @@ async def onboarding_page(
     """Onboarding: activate feeds, then start reading."""
     # Check if user has any active feeds — if so, they're onboarded
     active_feeds = await session.scalar(
-        select(func.count()).select_from(Feed).where(Feed.active == True)
+        select(func.count()).select_from(Feed).where(Feed.active.is_(True))
     )
     if active_feeds:
         return RedirectResponse(url="/", status_code=303)
@@ -634,8 +674,13 @@ async def onboarding_page(
         await session.commit()
     except Exception as e:
         return templates.TemplateResponse(
-            request, "onboarding.html",
-            {"step": "error", "error_message": f"Could not sync feeds from FreshRSS: {e}", "current_user": user},
+            request,
+            "onboarding.html",
+            {
+                "step": "error",
+                "error_message": f"Could not sync feeds from FreshRSS: {e}",
+                "current_user": user,
+            },
         )
     finally:
         await client.close()
@@ -644,7 +689,9 @@ async def onboarding_page(
     feeds = list(result.scalars().all())
 
     return templates.TemplateResponse(
-        request, "onboarding.html", {"step": "feeds", "feeds": feeds, "current_user": user}
+        request,
+        "onboarding.html",
+        {"step": "feeds", "feeds": feeds, "current_user": user},
     )
 
 
@@ -660,8 +707,13 @@ async def onboarding_activate_feeds(
 
     if not feed_ids:
         return templates.TemplateResponse(
-            request, "onboarding.html",
-            {"step": "error", "error_message": "Please select at least one feed", "current_user": user},
+            request,
+            "onboarding.html",
+            {
+                "step": "error",
+                "error_message": "Please select at least one feed",
+                "current_user": user,
+            },
         )
 
     # Activate selected feeds
@@ -687,9 +739,10 @@ async def onboarding_activate_feeds(
         profile.profile_version += 1
 
     await session.commit()
-    logger.info("Onboarding complete: user=%s activated=%d feeds", user.username, activated)
+    logger.info(
+        "Onboarding complete: user=%s activated=%d feeds", user.username, activated
+    )
 
     return RedirectResponse(url="/", status_code=303)
-
 
     # Legacy routes removed — onboarding no longer requires tag rating

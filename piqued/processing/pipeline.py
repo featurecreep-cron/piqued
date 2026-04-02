@@ -5,7 +5,7 @@ import logging
 import time
 from datetime import datetime, timezone
 
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from piqued import config
@@ -17,7 +17,7 @@ from piqued.ingestion.extractor import (
     enrich_content,
     extract_text,
 )
-from piqued.ingestion.freshrss import FeedItem, FreshRSSClient
+from piqued.ingestion.freshrss import FreshRSSClient
 from piqued.llm import create_client
 from piqued.llm.base import LLMClient
 from piqued.models import (
@@ -29,6 +29,7 @@ from piqued.models import (
     Section,
 )
 from piqued.processing.budget import check_budget
+
 # score_section + select_surprise_sections used at display time (web/router.py), not at ingest
 from piqued.processing.segmenter import segment_article
 
@@ -44,6 +45,7 @@ def _get_llm_client(task: str = "primary") -> LLMClient:
         api_key=llm_config["api_key"],
         base_url=llm_config["base_url"],
     )
+
 
 # Semaphore limits concurrent LLM calls (created lazily)
 _semaphore: asyncio.Semaphore | None = None
@@ -244,7 +246,13 @@ async def _process_article(article_id: int) -> str:
                 if feed_quality == "paywall":
                     article.status = ArticleStatus.skipped_paywall
                     await session.commit()
-                    await _log(session, article_id, "classify", "skipped", "Feed marked as paywall")
+                    await _log(
+                        session,
+                        article_id,
+                        "classify",
+                        "skipped",
+                        "Feed marked as paywall",
+                    )
                     return "skipped"
 
                 # ENRICH: attempt to get full content if RSS is short
@@ -263,13 +271,20 @@ async def _process_article(article_id: int) -> str:
                 classify_client = _get_llm_client("classify")
                 try:
                     classification, cls_confidence, cls_tokens = await classify_content(
-                        classify_client, text, article.title, feed_name, article.url or ""
+                        classify_client,
+                        text,
+                        article.title,
+                        feed_name,
+                        article.url or "",
                     )
                 finally:
-                    if hasattr(classify_client, 'close'):
+                    if hasattr(classify_client, "close"):
                         await classify_client.close()
                 await _log(
-                    session, article_id, "classify", "ok",
+                    session,
+                    article_id,
+                    "classify",
+                    "ok",
                     f"{classification} ({cls_confidence:.0%})",
                     tokens_used=cls_tokens,
                 )
@@ -287,7 +302,10 @@ async def _process_article(article_id: int) -> str:
                     article.status = ArticleStatus.skipped_paywall
                     await session.commit()
                     return "skipped"
-                if classification == "teaser" and count_words(text) < MIN_FULL_TEXT_WORDS:
+                if (
+                    classification == "teaser"
+                    and count_words(text) < MIN_FULL_TEXT_WORDS
+                ):
                     article.status = ArticleStatus.skipped_teaser
                     await session.commit()
                     return "skipped"
@@ -300,7 +318,10 @@ async def _process_article(article_id: int) -> str:
                     text = " ".join(words[:max_words])
                     text += f"\n\n[Truncated from {word_count} words]"
                     await _log(
-                        session, article_id, "guard", "warning",
+                        session,
+                        article_id,
+                        "guard",
+                        "warning",
                         f"Truncated {word_count} → {max_words} words",
                     )
 
@@ -314,12 +335,15 @@ async def _process_article(article_id: int) -> str:
                         segment_client, text, article.title, feed_name, existing_tags
                     )
                 finally:
-                    if hasattr(segment_client, 'close'):
+                    if hasattr(segment_client, "close"):
                         await segment_client.close()
                 article.tokens_used = cls_tokens + seg_tokens
 
                 await _log(
-                    session, article_id, "summarize", "ok",
+                    session,
+                    article_id,
+                    "summarize",
+                    "ok",
                     f"{len(sections)} sections, {seg_tokens} tokens",
                     tokens_used=seg_tokens,
                     duration_ms=int((time.monotonic() - start) * 1000),
@@ -347,7 +371,10 @@ async def _process_article(article_id: int) -> str:
                 duration_ms = int((time.monotonic() - start) * 1000)
                 logger.info(
                     "Processed '%s': %d sections, %d tokens, %dms",
-                    article.title, len(sections), article.tokens_used, duration_ms,
+                    article.title,
+                    len(sections),
+                    article.tokens_used,
+                    duration_ms,
                 )
                 return "processed"
 
@@ -381,11 +408,14 @@ async def _recover_stuck_articles(session: AsyncSession) -> int:
 async def _get_global_tag_vocabulary(session: AsyncSession) -> list[str]:
     """Get all unique topic tags across all users (for LLM reuse guidance)."""
     from sqlalchemy import distinct
+
     result = await session.execute(select(distinct(InterestWeight.topic)))
     return [row[0] for row in result]
 
 
-async def get_user_weights(session: AsyncSession, user_id: int) -> dict[str, InterestWeight]:
+async def get_user_weights(
+    session: AsyncSession, user_id: int
+) -> dict[str, InterestWeight]:
     """Get interest weights for a specific user."""
     result = await session.execute(
         select(InterestWeight).where(InterestWeight.user_id == user_id)
@@ -449,7 +479,10 @@ async def _score_for_all_users():
                 sections_result = await session.execute(
                     select(Section)
                     .join(Article, Section.article_id == Article.id)
-                    .where(Article.digest_date == today, Article.status == ArticleStatus.complete)
+                    .where(
+                        Article.digest_date == today,
+                        Article.status == ArticleStatus.complete,
+                    )
                 )
                 all_sections = list(sections_result.scalars().all())
                 unscored = [s for s in all_sections if s.id not in scored_ids]
@@ -474,14 +507,16 @@ async def _score_for_all_users():
                 for s in unscored:
                     article = articles_map.get(s.article_id)
                     feed = feeds_map.get(article.feed_id) if article else None
-                    section_dicts.append({
-                        "id": s.id,
-                        "index": s.section_index,
-                        "heading": s.heading or "",
-                        "summary": s.summary[:200],
-                        "tags": s.tags_list,
-                        "feed_name": feed.title if feed else "",
-                    })
+                    section_dicts.append(
+                        {
+                            "id": s.id,
+                            "index": s.section_index,
+                            "heading": s.heading or "",
+                            "summary": s.summary[:200],
+                            "tags": s.tags_list,
+                            "feed_name": feed.title if feed else "",
+                        }
+                    )
 
                 # Score via LLM
                 scoring_client = _get_llm_client("scoring")
@@ -491,24 +526,26 @@ async def _score_for_all_users():
                     )
 
                     for sc in scored:
-                        session.add(SectionScore(
-                            user_id=profile.user_id,
-                            section_id=sc.section_id,
-                            score=sc.score,
-                            reasoning=sc.reasoning,
-                            profile_version=profile.profile_version,
-                        ))
+                        session.add(
+                            SectionScore(
+                                user_id=profile.user_id,
+                                section_id=sc.section_id,
+                                score=sc.score,
+                                reasoning=sc.reasoning,
+                                profile_version=profile.profile_version,
+                            )
+                        )
 
                     await session.commit()
                     logger.info(
                         "Scored %d sections for user %d (%d tokens)",
-                        len(scored), profile.user_id, tokens,
+                        len(scored),
+                        profile.user_id,
+                        tokens,
                     )
                 finally:
-                    if hasattr(scoring_client, 'close'):
+                    if hasattr(scoring_client, "close"):
                         await scoring_client.close()
 
             except Exception as e:
-                logger.exception(
-                    "Scoring failed for user %d: %s", profile.user_id, e
-                )
+                logger.exception("Scoring failed for user %d: %s", profile.user_id, e)

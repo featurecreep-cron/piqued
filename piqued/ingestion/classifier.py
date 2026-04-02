@@ -4,7 +4,7 @@ teaser, paywall page, error page, or login wall."""
 import json
 import logging
 
-from piqued.llm.base import LLMClient, LLMResponse
+from piqued.llm.base import LLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -78,17 +78,26 @@ async def classify_content(
         # Validate classification
         valid = {"full_article", "teaser", "paywall_page", "error_page", "login_wall"}
         if classification not in valid:
-            logger.warning("Invalid classification '%s', defaulting to full_article", classification)
+            logger.warning(
+                "Invalid classification '%s', defaulting to full_article",
+                classification,
+            )
             classification = "full_article"
 
         logger.info(
             "Classified '%s': %s (%.0f%%) — %s [%d tokens]",
-            title, classification, confidence * 100, reason, response.tokens_used,
+            title,
+            classification,
+            confidence * 100,
+            reason,
+            response.tokens_used,
         )
         return classification, confidence, response.tokens_used
 
     except Exception as e:
-        logger.warning("Classification failed for '%s': %s — defaulting to full_article", title, e)
+        logger.warning(
+            "Classification failed for '%s': %s — defaulting to full_article", title, e
+        )
         return "full_article", 0.5, 0
 
 

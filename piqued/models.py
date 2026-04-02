@@ -55,13 +55,19 @@ class User(Base):
     oidc_sub: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
     oidc_provider: Mapped[str | None] = mapped_column(String, nullable=True)
     role: Mapped[str] = mapped_column(String, default="user")  # 'admin' or 'user'
-    role_source: Mapped[str] = mapped_column(String, default="auto")  # 'auto', 'manual', 'oidc'
+    role_source: Mapped[str] = mapped_column(
+        String, default="auto"
+    )  # 'auto', 'manual', 'oidc'
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     last_login: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    interest_weights: Mapped[list["InterestWeight"]] = relationship(back_populates="user")
+    interest_weights: Mapped[list["InterestWeight"]] = relationship(
+        back_populates="user"
+    )
     feedback_items: Mapped[list["Feedback"]] = relationship(back_populates="user")
-    profile: Mapped["UserProfile | None"] = relationship(back_populates="user", uselist=False)
+    profile: Mapped["UserProfile | None"] = relationship(
+        back_populates="user", uselist=False
+    )
 
 
 class Feed(Base):
@@ -76,7 +82,9 @@ class Feed(Base):
     content_quality: Mapped[str] = mapped_column(
         String, default=ContentQuality.unknown.value
     )
-    quality_streak: Mapped[int] = mapped_column(Integer, default=0)  # consecutive same classification count
+    quality_streak: Mapped[int] = mapped_column(
+        Integer, default=0
+    )  # consecutive same classification count
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     articles: Mapped[list["Article"]] = relationship(back_populates="feed")
@@ -125,7 +133,9 @@ class Section(Base):
     has_humor: Mapped[bool] = mapped_column(Boolean, default=False)
     has_surprise_data: Mapped[bool] = mapped_column(Boolean, default=False)
     has_actionable_advice: Mapped[bool] = mapped_column(Boolean, default=False)
-    reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)  # LLM's explanation of why this section matters
+    reasoning: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )  # LLM's explanation of why this section matters
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     article: Mapped["Article"] = relationship(back_populates="sections")
@@ -208,13 +218,13 @@ class UserProfile(Base):
 
     __tablename__ = "user_profiles"
 
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id"), primary_key=True
-    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
     profile_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
     profile_version: Mapped[int] = mapped_column(Integer, default=1)
     pending_feedback_count: Mapped[int] = mapped_column(Integer, default=0)
-    last_synthesized_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_synthesized_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()

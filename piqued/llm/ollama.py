@@ -55,6 +55,4 @@ class OllamaClient:
         # Ollama reports tokens in eval_count + prompt_eval_count
         tokens_used = data.get("eval_count", 0) + data.get("prompt_eval_count", 0)
 
-        return LLMResponse(
-            text=text, tokens_used=tokens_used, model=self._model_name
-        )
+        return LLMResponse(text=text, tokens_used=tokens_used, model=self._model_name)

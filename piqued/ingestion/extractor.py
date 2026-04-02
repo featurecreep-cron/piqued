@@ -112,9 +112,7 @@ def _walk(element, lines: list[str]) -> None:
         elif tag_name == "table":
             # Flatten tables to rows of pipe-separated values
             for row in child.find_all("tr"):
-                cells = [
-                    td.get_text(strip=True) for td in row.find_all(["td", "th"])
-                ]
+                cells = [td.get_text(strip=True) for td in row.find_all(["td", "th"])]
                 if any(cells):
                     lines.append("| " + " | ".join(cells) + " |")
             lines.append("")
@@ -153,17 +151,27 @@ async def enrich_content(html: str, url: str) -> tuple[str, str]:
     # Attempt 1: fetch from original URL
     result = await _fetch_and_extract(url)
     if result and count_words(extract_text(result)) > original_words:
-        logger.info("Enriched from URL: %d → %d words", original_words, count_words(extract_text(result)))
+        logger.info(
+            "Enriched from URL: %d → %d words",
+            original_words,
+            count_words(extract_text(result)),
+        )
         return result, "url"
 
     # Attempt 2: try archive.is
     archive_url = f"https://archive.is/latest/{url}"
     result = await _fetch_and_extract(archive_url)
     if result and count_words(extract_text(result)) > original_words:
-        logger.info("Enriched from archive.is: %d → %d words", original_words, count_words(extract_text(result)))
+        logger.info(
+            "Enriched from archive.is: %d → %d words",
+            original_words,
+            count_words(extract_text(result)),
+        )
         return result, "archive"
 
-    logger.info("Enrichment failed for %s — using RSS teaser (%d words)", url, original_words)
+    logger.info(
+        "Enrichment failed for %s — using RSS teaser (%d words)", url, original_words
+    )
     return html, "failed"
 
 

@@ -70,7 +70,9 @@ def _start_scheduler():
         replace_existing=True,
     )
     scheduler.start()
-    logger.info("Scheduler started: polling every %d minutes, nightly decay at 03:00", interval)
+    logger.info(
+        "Scheduler started: polling every %d minutes, nightly decay at 03:00", interval
+    )
 
 
 async def _seed_feeds():
@@ -112,12 +114,19 @@ app = FastAPI(title="Piqued", version="0.4.0", lifespan=lifespan)
 # We want: [SessionMiddleware] -> [CSRFMiddleware] -> [route]
 # So add CSRF first (innermost), then Session (outermost)
 
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.middleware.sessions import SessionMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
+from starlette.middleware.sessions import SessionMiddleware  # noqa: E402
 
 
 class CSRFMiddleware(BaseHTTPMiddleware):
-    PUBLIC_PATHS = {"/health", "/login", "/login/oidc", "/auth/callback", "/logout", "/setup"}
+    PUBLIC_PATHS = {
+        "/health",
+        "/login",
+        "/login/oidc",
+        "/auth/callback",
+        "/logout",
+        "/setup",
+    }
 
     async def dispatch(self, request: Request, call_next):
         from fastapi.responses import JSONResponse
@@ -134,6 +143,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         request.state.csrf = ""
         if "csrf" not in request.session:
             import secrets
+
             request.session["csrf"] = secrets.token_hex(16)
         request.state.csrf = request.session["csrf"]
 
@@ -149,10 +159,13 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                     # Read body and cache it so route handlers can re-read
                     body = await request.body()
                     from urllib.parse import parse_qs
+
                     parsed = parse_qs(body.decode("utf-8"))
                     form_csrf = parsed.get("_csrf", [""])[0]
                     if form_csrf != session_csrf or not session_csrf:
-                        return JSONResponse({"error": "CSRF check failed"}, status_code=403)
+                        return JSONResponse(
+                            {"error": "CSRF check failed"}, status_code=403
+                        )
                 elif not xhr_token:
                     return JSONResponse({"error": "CSRF check failed"}, status_code=403)
 
@@ -166,7 +179,8 @@ app.add_middleware(CSRFMiddleware)
 # Session secret: try DB first, fall back to env var, then generate a random one.
 # Note: at import time the DB may not be loaded yet, so this often gets the fallback.
 # ensure_session_secret() in lifespan saves a permanent key to DB for next boot.
-import os as _os
+import os as _os  # noqa: E402
+
 session_secret = (
     config.get("session_secret_key")
     or _os.environ.get("PIQUED_SESSION_SECRET")
@@ -176,9 +190,9 @@ app.add_middleware(SessionMiddleware, secret_key=session_secret)
 
 
 # Include routers
-from piqued.auth.router import router as auth_router
-from piqued.feedback.router import router as feedback_router
-from piqued.web.router import router as web_router
+from piqued.auth.router import router as auth_router  # noqa: E402
+from piqued.feedback.router import router as feedback_router  # noqa: E402
+from piqued.web.router import router as web_router  # noqa: E402
 
 app.include_router(auth_router)
 app.include_router(feedback_router)

@@ -2,12 +2,13 @@
 
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 
+import bcrypt
 from authlib.integrations.starlette_client import OAuth
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-import bcrypt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,9 +19,6 @@ from piqued.models import User
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["auth"])
-
-# Templates reuse the same directory as web router
-from pathlib import Path
 
 templates = Jinja2Templates(
     directory=str(Path(__file__).parent.parent / "web" / "templates")
@@ -88,9 +86,7 @@ async def login_oidc(request: Request):
 
 
 @router.get("/auth/callback")
-async def auth_callback(
-    request: Request, session: AsyncSession = Depends(get_session)
-):
+async def auth_callback(request: Request, session: AsyncSession = Depends(get_session)):
     """OIDC callback — exchange code for token, create/update user, set session."""
     oauth = _get_oauth()
     if not oauth:
@@ -109,7 +105,9 @@ async def auth_callback(
     sub = userinfo.get("sub", "")
 
     if not username:
-        return RedirectResponse(url="/login?error=No+username+in+OIDC+response", status_code=303)
+        return RedirectResponse(
+            url="/login?error=No+username+in+OIDC+response", status_code=303
+        )
 
     # Get or create user
     user = await get_or_create_user(session, username, email)
@@ -142,12 +140,12 @@ async def auth_callback(
 
 
 @router.post("/login")
-async def login_local(
-    request: Request, session: AsyncSession = Depends(get_session)
-):
+async def login_local(request: Request, session: AsyncSession = Depends(get_session)):
     """Local username/password login."""
     if "local" not in config.get("auth_methods").split(","):
-        return RedirectResponse(url="/login?error=Local+login+disabled", status_code=303)
+        return RedirectResponse(
+            url="/login?error=Local+login+disabled", status_code=303
+        )
 
     form = await request.form()
 
@@ -160,13 +158,15 @@ async def login_local(
     password = str(form.get("password", ""))
 
     if not username or not password:
-        return RedirectResponse(url="/login?error=Username+and+password+required", status_code=303)
+        return RedirectResponse(
+            url="/login?error=Username+and+password+required", status_code=303
+        )
 
     user = await session.scalar(select(User).where(User.username == username))
     if not user or not user.password_hash:
         return RedirectResponse(url="/login?error=Invalid+credentials", status_code=303)
 
-    if not bcrypt.checkpw(password.encode('utf-8'), user.password_hash.encode('utf-8')):
+    if not bcrypt.checkpw(password.encode("utf-8"), user.password_hash.encode("utf-8")):
         return RedirectResponse(url="/login?error=Invalid+credentials", status_code=303)
 
     user.last_login = datetime.now(timezone.utc)
@@ -180,9 +180,7 @@ async def login_local(
 
 
 @router.get("/setup", response_class=HTMLResponse)
-async def setup_page(
-    request: Request, session: AsyncSession = Depends(get_session)
-):
+async def setup_page(request: Request, session: AsyncSession = Depends(get_session)):
     """First-launch setup: create admin + configure app. Only available when no users exist."""
     from sqlalchemy import func
 
@@ -201,9 +199,7 @@ async def setup_page(
 
 
 @router.post("/setup")
-async def setup_submit(
-    request: Request, session: AsyncSession = Depends(get_session)
-):
+async def setup_submit(request: Request, session: AsyncSession = Depends(get_session)):
     """Process first-launch setup: create admin user + save app config."""
     from sqlalchemy import func
 
@@ -219,14 +215,22 @@ async def setup_submit(
     if not username or not password:
         csrf = ensure_csrf(request)
         from piqued.llm.factory import PROVIDERS
+
         return templates.TemplateResponse(
-            request, "setup.html",
-            {"csrf": csrf, "providers": sorted(PROVIDERS), "error": "Username and password are required"},
+            request,
+            "setup.html",
+            {
+                "csrf": csrf,
+                "providers": sorted(PROVIDERS),
+                "error": "Username and password are required",
+            },
         )
 
     admin = User(
         username=username,
-        password_hash=bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8'),
+        password_hash=bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode(
+            "utf-8"
+        ),
         role="admin",
         role_source="auto",
         last_login=datetime.now(timezone.utc),
@@ -236,14 +240,22 @@ async def setup_submit(
 
     # Save app settings
     settings_to_save = {}
-    for key in ("llm_provider", "llm_model", "llm_api_key", "llm_base_url",
-                "freshrss_base_url", "freshrss_username", "freshrss_api_pass"):
+    for key in (
+        "llm_provider",
+        "llm_model",
+        "llm_api_key",
+        "llm_base_url",
+        "freshrss_base_url",
+        "freshrss_username",
+        "freshrss_api_pass",
+    ):
         val = str(form.get(key, "")).strip()
         if val:
             settings_to_save[key] = val
 
     if settings_to_save:
         from piqued import config as cfg
+
         await cfg.save_settings(settings_to_save)
         await cfg.load_settings_from_db()
 
@@ -255,8 +267,10 @@ async def setup_submit(
 
     # Start scheduler if now configured
     from piqued import config as cfg
+
     if cfg.is_configured():
         from piqued.main import _start_scheduler
+
         _start_scheduler()
 
     return RedirectResponse(url="/onboarding", status_code=303)
