@@ -35,12 +35,16 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+      fail-fast: false
     steps:
       - uses: actions/checkout@v6
 
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
           cache: pip
 
       - name: Install dependencies
@@ -50,6 +54,7 @@ jobs:
         run: pytest --cov=piqued --cov-report=xml --tb=short -q
 
       - name: Upload coverage
+        if: matrix.python-version == '3.12'
         uses: codecov/codecov-action@v6
         with:
           files: coverage.xml
