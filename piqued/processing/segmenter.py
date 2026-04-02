@@ -97,7 +97,9 @@ async def segment_article(
             if sections:
                 logger.info(
                     "Segmented '%s' into %d sections (%d tokens)",
-                    title, len(sections), tokens_used,
+                    title,
+                    len(sections),
+                    tokens_used,
                 )
                 return sections, tokens_used
 
@@ -108,7 +110,11 @@ async def segment_article(
             wait = 2 ** (attempt + 1)
             logger.warning(
                 "Segmentation attempt %d/%d failed for '%s': %s. Retrying in %ds",
-                attempt + 1, max_retries, title, str(e)[:200], wait,
+                attempt + 1,
+                max_retries,
+                title,
+                str(e)[:200],
+                wait,
             )
             await asyncio.sleep(wait)
 
@@ -121,7 +127,7 @@ def _parse_response(text: str) -> list[SegmentedSection]:
     cleaned = text.strip()
     if cleaned.startswith("```"):
         lines = cleaned.split("\n")
-        lines = [l for l in lines[1:] if not l.strip().startswith("```")]
+        lines = [line for line in lines[1:] if not line.strip().startswith("```")]
         cleaned = "\n".join(lines)
 
     data = json.loads(cleaned)

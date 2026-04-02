@@ -85,4 +85,8 @@ async def apply_interest_decay():
 
         if decayed:
             await session.commit()
-            logger.info("Interest decay: adjusted %d stale weights (cutoff=%s)", decayed, cutoff.date())
+            logger.info(
+                "Interest decay: adjusted %d stale weights (cutoff=%s)",
+                decayed,
+                cutoff.date(),
+            )

@@ -57,9 +57,7 @@ class GeminiClient:
 
         tokens_used = 0
         if hasattr(response, "usage_metadata") and response.usage_metadata:
-            tokens_used = (
-                getattr(response.usage_metadata, "total_token_count", 0) or 0
-            )
+            tokens_used = getattr(response.usage_metadata, "total_token_count", 0) or 0
 
         try:
             text = response.text or ""

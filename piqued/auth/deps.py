@@ -27,6 +27,7 @@ async def get_or_create_user(
 
     # Check if this is the first user (auto-admin)
     from sqlalchemy import func
+
     count = await session.scalar(select(func.count()).select_from(User))
     role = "admin" if count == 0 else "user"
     role_source = "auto" if count == 0 else "auto"

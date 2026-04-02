@@ -44,10 +44,15 @@ class TestInterestDecay:
         async with async_session() as session:
             user = await _create_user(session)
             old_date = datetime.now(timezone.utc) - timedelta(days=30)
-            session.add(InterestWeight(
-                user_id=user.id, topic="old-topic", weight=0.8,
-                feedback_count=5, updated_at=old_date,
-            ))
+            session.add(
+                InterestWeight(
+                    user_id=user.id,
+                    topic="old-topic",
+                    weight=0.8,
+                    feedback_count=5,
+                    updated_at=old_date,
+                )
+            )
             await session.commit()
             uid = user.id
 
@@ -64,10 +69,15 @@ class TestInterestDecay:
         async with async_session() as session:
             user = await _create_user(session, "neg_user")
             old_date = datetime.now(timezone.utc) - timedelta(days=30)
-            session.add(InterestWeight(
-                user_id=user.id, topic="disliked", weight=-0.6,
-                feedback_count=3, updated_at=old_date,
-            ))
+            session.add(
+                InterestWeight(
+                    user_id=user.id,
+                    topic="disliked",
+                    weight=-0.6,
+                    feedback_count=3,
+                    updated_at=old_date,
+                )
+            )
             await session.commit()
             uid = user.id
 
@@ -84,10 +94,15 @@ class TestInterestDecay:
         async with async_session() as session:
             user = await _create_user(session, "recent_user")
             recent_date = datetime.now(timezone.utc) - timedelta(days=2)
-            session.add(InterestWeight(
-                user_id=user.id, topic="fresh", weight=0.9,
-                feedback_count=10, updated_at=recent_date,
-            ))
+            session.add(
+                InterestWeight(
+                    user_id=user.id,
+                    topic="fresh",
+                    weight=0.9,
+                    feedback_count=10,
+                    updated_at=recent_date,
+                )
+            )
             await session.commit()
             uid = user.id
 
@@ -104,10 +119,15 @@ class TestInterestDecay:
         async with async_session() as session:
             user = await _create_user(session, "zero_user")
             old_date = datetime.now(timezone.utc) - timedelta(days=30)
-            session.add(InterestWeight(
-                user_id=user.id, topic="tiny", weight=0.005,
-                feedback_count=1, updated_at=old_date,
-            ))
+            session.add(
+                InterestWeight(
+                    user_id=user.id,
+                    topic="tiny",
+                    weight=0.005,
+                    feedback_count=1,
+                    updated_at=old_date,
+                )
+            )
             await session.commit()
             uid = user.id
 
@@ -132,10 +152,15 @@ class TestInterestDecay:
         async with async_session() as session:
             user = await _create_user(session, "overshoot_user")
             old_date = datetime.now(timezone.utc) - timedelta(days=30)
-            session.add(InterestWeight(
-                user_id=user.id, topic="small-pos", weight=0.03,
-                feedback_count=2, updated_at=old_date,
-            ))
+            session.add(
+                InterestWeight(
+                    user_id=user.id,
+                    topic="small-pos",
+                    weight=0.03,
+                    feedback_count=2,
+                    updated_at=old_date,
+                )
+            )
             await session.commit()
             uid = user.id
 
@@ -153,10 +178,12 @@ class TestConfigKeys:
 
     def test_decay_rate_in_defaults(self):
         from piqued.config import DEFAULTS
+
         assert "interest_decay_rate" in DEFAULTS
         assert float(DEFAULTS["interest_decay_rate"]) == 0.05
 
     def test_decay_after_days_in_defaults(self):
         from piqued.config import DEFAULTS
+
         assert "interest_decay_after_days" in DEFAULTS
         assert int(DEFAULTS["interest_decay_after_days"]) == 14

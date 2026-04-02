@@ -25,7 +25,9 @@ class ClaudeClient:
         if self._client is None:
             from anthropic import AsyncAnthropic
 
-            self._client = AsyncAnthropic(api_key=self._api_key, base_url=self._base_url)
+            self._client = AsyncAnthropic(
+                api_key=self._api_key, base_url=self._base_url
+            )
         return self._client
 
     async def generate(
@@ -57,6 +59,10 @@ class ClaudeClient:
         response = await client.messages.create(**kwargs)
 
         text = response.content[0].text if response.content else ""
-        tokens_used = (response.usage.input_tokens + response.usage.output_tokens) if response.usage else 0
+        tokens_used = (
+            (response.usage.input_tokens + response.usage.output_tokens)
+            if response.usage
+            else 0
+        )
 
         return LLMResponse(text=text, tokens_used=tokens_used, model=self._model_name)

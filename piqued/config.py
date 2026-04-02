@@ -128,7 +128,9 @@ async def save_settings(settings_dict: dict[str, str]):
     async with async_session() as session:
         for key, value in settings_dict.items():
             stmt = insert(Setting).values(key=key, value=value)
-            stmt = stmt.on_conflict_do_update(index_elements=["key"], set_={"value": value})
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["key"], set_={"value": value}
+            )
             await session.execute(stmt)
         await session.commit()
 

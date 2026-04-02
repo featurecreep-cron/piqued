@@ -63,16 +63,19 @@ async def score_sections_for_user(
     if not sections:
         return [], 0
 
-    sections_json = json.dumps([
-        {
-            "index": s["index"],
-            "heading": s["heading"],
-            "summary": s["summary"][:200],
-            "tags": s["tags"],
-            "source": s.get("feed_name", ""),
-        }
-        for s in sections
-    ], indent=None)
+    sections_json = json.dumps(
+        [
+            {
+                "index": s["index"],
+                "heading": s["heading"],
+                "summary": s["summary"][:200],
+                "tags": s["tags"],
+                "source": s.get("feed_name", ""),
+            }
+            for s in sections
+        ],
+        indent=None,
+    )
 
     if profile_text and profile_text.strip():
         prompt = SCORING_PROMPT.format(
@@ -93,7 +96,8 @@ async def score_sections_for_user(
         results = _parse_scoring_response(response.text, sections)
         logger.info(
             "Scored %d sections (%d tokens), profile=%s",
-            len(results), response.tokens_used,
+            len(results),
+            response.tokens_used,
             "yes" if profile_text else "no",
         )
         return results, response.tokens_used
@@ -103,14 +107,12 @@ async def score_sections_for_user(
         return [], 0
 
 
-def _parse_scoring_response(
-    text: str, sections: list[dict]
-) -> list[ScoredSection]:
+def _parse_scoring_response(text: str, sections: list[dict]) -> list[ScoredSection]:
     """Parse LLM scoring response into ScoredSection objects."""
     cleaned = text.strip()
     if cleaned.startswith("```"):
         lines = cleaned.split("\n")
-        lines = [l for l in lines[1:] if not l.strip().startswith("```")]
+        lines = [line for line in lines[1:] if not line.strip().startswith("```")]
         cleaned = "\n".join(lines)
 
     data = json.loads(cleaned)
@@ -133,11 +135,13 @@ def _parse_scoring_response(
         if section_id is None:
             continue
 
-        results.append(ScoredSection(
-            section_id=section_id,
-            section_index=idx,
-            score=score,
-            reasoning=reasoning,
-        ))
+        results.append(
+            ScoredSection(
+                section_id=section_id,
+                section_index=idx,
+                score=score,
+                reasoning=reasoning,
+            )
+        )
 
     return results

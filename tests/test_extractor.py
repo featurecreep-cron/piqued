@@ -21,7 +21,9 @@ class TestExtractText:
         assert "### Subsection" in result
 
     def test_inline_elements_preserve_spacing(self):
-        html = "<p>Tests whether <strong>utility tokens</strong> count as securities.</p>"
+        html = (
+            "<p>Tests whether <strong>utility tokens</strong> count as securities.</p>"
+        )
         result = extract_text(html)
         assert "utility tokens" in result
         assert "whether utility" in result  # space preserved around <strong>
