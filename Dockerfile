@@ -1,10 +1,10 @@
-FROM python:3.12-slim AS builder
+FROM python:3.14-slim AS builder
 
 WORKDIR /build
 COPY requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 RUN groupadd -g 1000 piqued && useradd -u 1000 -g 1000 -d /app piqued
 WORKDIR /app
