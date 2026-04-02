@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/featurecreep-cron/piqued/actions/workflows/ci.yml/badge.svg)](https://github.com/featurecreep-cron/piqued/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/github/license/featurecreep-cron/piqued)](LICENSE)
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12 | 3.13 | 3.14](https://img.shields.io/badge/python-3.12_%7C_3.13_%7C_3.14-blue.svg)](https://www.python.org/downloads/)
 
 An AI-powered personal interest filter for RSS feeds, newsletters, and links. Piqued segments long-form content, learns what you care about from your feedback, and surfaces the sections worth reading.
 
