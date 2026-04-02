@@ -1,5 +1,9 @@
 # Piqued
 
+[![CI](https://github.com/featurecreep-cron/piqued/actions/workflows/ci.yml/badge.svg)](https://github.com/featurecreep-cron/piqued/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/github/license/featurecreep-cron/piqued)](LICENSE)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+
 An AI-powered personal interest filter for RSS feeds, newsletters, and links. Piqued segments long-form content, learns what you care about from your feedback, and surfaces the sections worth reading.
 
 ## Quick Start
@@ -59,6 +63,14 @@ Run tests:
 ```bash
 pytest tests/
 ```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines and how to submit changes.
+
+## Support
+
+If you find Piqued useful, consider [buying me a coffee](https://buymeacoffee.com/featurecreep).
 
 ## License
 
