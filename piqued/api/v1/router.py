@@ -19,6 +19,10 @@ from piqued.api.v1.schemas import (
     ArticleDetail,
     ArticleSection,
     ArticleSummary,
+    ChangeRoleRequest,
+    ClickThroughRequest,
+    CreateUserRequest,
+    DownweightRequest,
     FeedbackRequest,
     FeedbackResult,
     FeedDetail,
@@ -321,7 +325,7 @@ async def api_feedback(
 
 @router.post("/click-through")
 async def api_click_through(
-    section_id: int,
+    body: ClickThroughRequest,
     user: User = Depends(get_api_user),
     session: AsyncSession = Depends(get_session),
 ):
@@ -329,7 +333,7 @@ async def api_click_through(
     from piqued.feedback.router import submit_feedback
 
     result = await submit_feedback(
-        InternalFBRequest(section_id=section_id, rating=1, source="click_through"),
+        InternalFBRequest(section_id=body.section_id, rating=1, source="click_through"),
         user=user,
         session=session,
     )
@@ -338,14 +342,15 @@ async def api_click_through(
 
 @router.post("/downweight")
 async def api_downweight(
-    tag: str,
+    body: DownweightRequest,
     user: User = Depends(get_api_user),
     session: AsyncSession = Depends(get_session),
 ):
-    from piqued.feedback.router import DownweightRequest, downweight_tag
+    from piqued.feedback.router import DownweightRequest as InternalDWRequest
+    from piqued.feedback.router import downweight_tag
 
     result = await downweight_tag(
-        DownweightRequest(tag=tag), user=user, session=session
+        InternalDWRequest(tag=body.tag), user=user, session=session
     )
     return result
 
@@ -512,24 +517,21 @@ async def list_users(
 
 @router.post("/users", response_model=UserInfo)
 async def create_user_api(
-    username: str,
-    password: str,
-    role: str = "user",
+    body: CreateUserRequest,
     admin: User = Depends(require_api_admin),
     session: AsyncSession = Depends(get_session),
 ):
     import bcrypt
 
-    if role not in ("admin", "user"):
-        role = "user"
-    existing = await session.scalar(select(User).where(User.username == username))
+    role = body.role if body.role in ("admin", "user") else "user"
+    existing = await session.scalar(select(User).where(User.username == body.username))
     if existing:
         raise HTTPException(status_code=409, detail="Username already exists")
     new_user = User(
-        username=username,
-        password_hash=bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode(
-            "utf-8"
-        ),
+        username=body.username,
+        password_hash=bcrypt.hashpw(
+            body.password.encode("utf-8"), bcrypt.gensalt()
+        ).decode("utf-8"),
         role=role,
         role_source="manual",
     )
@@ -546,12 +548,11 @@ async def create_user_api(
 @router.put("/users/{user_id}/role", response_model=UserInfo)
 async def change_role_api(
     user_id: int,
-    role: str,
+    body: ChangeRoleRequest,
     admin: User = Depends(require_api_admin),
     session: AsyncSession = Depends(get_session),
 ):
-    if role not in ("admin", "user"):
-        role = "user"
+    role = body.role if body.role in ("admin", "user") else "user"
     target = await session.get(User, user_id)
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
