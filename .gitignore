@@ -12,6 +12,8 @@ build/
 htmlcov/
 .mypy_cache/
 .ruff_cache/
+node_modules/
+frontend/dist/
 
 # Planning docs (internal, not public)
 docs/
