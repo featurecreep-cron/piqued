@@ -1,15 +1,25 @@
-FROM python:3.14-slim AS builder
+# Stage 1: Frontend build
+FROM node:22-slim AS frontend
+WORKDIR /build
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ .
+RUN npm run build
 
+# Stage 2: Python dependencies
+FROM python:3.14-slim AS backend
 WORKDIR /build
 COPY requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
+# Stage 3: Runtime
 FROM python:3.14-slim
 
 RUN groupadd -g 1000 piqued && useradd -u 1000 -g 1000 -d /app piqued
 WORKDIR /app
 
-COPY --from=builder /install /usr/local
+COPY --from=backend /install /usr/local
+COPY --from=frontend /build/dist /app/piqued/web/spa/
 COPY . .
 
 RUN mkdir -p /data && chown -R piqued:piqued /app /data

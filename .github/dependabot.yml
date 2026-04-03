@@ -30,6 +30,21 @@ updates:
           - patch
           - minor
 
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore"
+      include: scope
+    labels:
+      - dependencies
+    groups:
+      patches-and-minors:
+        update-types:
+          - patch
+          - minor
+
   - package-ecosystem: docker
     directory: /
     schedule:

@@ -184,6 +184,24 @@ class SyncResult(BaseModel):
 # --- API keys ---
 
 
+class ClickThroughRequest(BaseModel):
+    section_id: int
+
+
+class DownweightRequest(BaseModel):
+    tag: str
+
+
+class CreateUserRequest(BaseModel):
+    username: str
+    password: str
+    role: str = "user"
+
+
+class ChangeRoleRequest(BaseModel):
+    role: str
+
+
 class ApiKeyCreate(BaseModel):
     name: str = ""
 

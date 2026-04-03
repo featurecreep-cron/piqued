@@ -194,18 +194,26 @@ from piqued.api.v1.feed_xml import router as api_v1_feed_router  # noqa: E402
 from piqued.api.v1.router import router as api_v1_router  # noqa: E402
 from piqued.auth.router import router as auth_router  # noqa: E402
 from piqued.feedback.router import router as feedback_router  # noqa: E402
-from piqued.web.router import router as web_router  # noqa: E402
+from piqued.web.router import onboarding_router, router as web_router  # noqa: E402
 
 app.include_router(api_v1_router)
 app.include_router(api_v1_feed_router)
 app.include_router(auth_router)
 app.include_router(feedback_router)
+app.include_router(onboarding_router)
 app.include_router(web_router)
 
 # Mount static files
 static_dir = Path(__file__).parent / "web" / "static"
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+# Mount SPA built assets (from Vue frontend build)
+spa_dir = Path(__file__).parent / "web" / "spa"
+if spa_dir.exists() and (spa_dir / "assets").exists():
+    app.mount(
+        "/assets", StaticFiles(directory=str(spa_dir / "assets")), name="spa-assets"
+    )
 
 
 @app.get("/health")
@@ -217,3 +225,32 @@ async def health():
     async with async_session() as session:
         await session.execute(text("SELECT 1"))
     return {"status": "ok", "configured": config.is_configured()}
+
+
+# SPA catch-all — must be registered last so all explicit routes take priority
+_SPA_EXCLUDED = (
+    "/api/",
+    "/login",
+    "/logout",
+    "/setup",
+    "/onboarding",
+    "/auth/",
+    "/health",
+    "/legacy/",
+    "/static",
+    "/assets",
+)
+
+if spa_dir.exists() and (spa_dir / "index.html").exists():
+    from fastapi.responses import HTMLResponse  # noqa: E402
+
+    @app.get("/{path:path}", response_class=HTMLResponse, include_in_schema=False)
+    async def spa_catch_all(path: str):
+        """Serve Vue SPA index.html for client-side routing."""
+        full = f"/{path}"
+        if any(full.startswith(p) for p in _SPA_EXCLUDED):
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=404)
+        index = spa_dir / "index.html"
+        return HTMLResponse(index.read_text())

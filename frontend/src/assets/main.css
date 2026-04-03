@@ -1,0 +1,52 @@
+:root {
+  --pq-bg: #ffffff;
+  --pq-text: #1a1a1a;
+  --pq-muted: #6b7280;
+  --pq-border: #e5e7eb;
+  --pq-card-bg: #f9fafb;
+  --pq-accent: #2563eb;
+  --pq-success: #16a34a;
+  --pq-warning: #d97706;
+  --pq-danger: #dc2626;
+  --pq-discover: #7c3aed;
+  --pq-font-sans: system-ui, -apple-system, sans-serif;
+  --pq-font-mono: ui-monospace, monospace;
+  --pq-radius: 6px;
+}
+
+[data-theme='dark'] {
+  --pq-bg: #0f172a;
+  --pq-text: #e2e8f0;
+  --pq-muted: #94a3b8;
+  --pq-border: #334155;
+  --pq-card-bg: #1e293b;
+  --pq-accent: #60a5fa;
+  --pq-success: #4ade80;
+  --pq-warning: #fbbf24;
+  --pq-danger: #f87171;
+  --pq-discover: #a78bfa;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+}
+
+body {
+  font-family: var(--pq-font-sans);
+  color: var(--pq-text);
+  background: var(--pq-bg);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--pq-accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}

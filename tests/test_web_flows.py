@@ -142,7 +142,7 @@ class TestCSRF:
             assert r.status_code == 303  # redirect after login
 
             # Now POST to settings WITHOUT csrf
-            r = await client.post("/settings", data={"llm_provider": "gemini"})
+            r = await client.post("/legacy/settings", data={"llm_provider": "gemini"})
             assert r.status_code == 403
             assert "CSRF" in r.text
 
@@ -183,7 +183,7 @@ class TestCSRF:
             assert r.status_code == 303
 
             # Get a page to obtain the session CSRF
-            r = await client.get("/settings")
+            r = await client.get("/legacy/settings")
             csrf_match = re.search(r'name="csrf-token" content="([^"]+)"', r.text)
             if not csrf_match:
                 csrf_match = re.search(r'name="_csrf" value="([^"]+)"', r.text)
@@ -192,7 +192,7 @@ class TestCSRF:
 
             # POST with valid CSRF — should not get 403
             r = await client.post(
-                "/settings",
+                "/legacy/settings",
                 data={
                     "_csrf": new_csrf,
                     "llm_provider": "gemini",

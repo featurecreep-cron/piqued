@@ -38,7 +38,9 @@ async def ensure_csrf_dep(request: Request):
         request.state.csrf = ""
 
 
-router = APIRouter(tags=["web"], dependencies=[Depends(ensure_csrf_dep)])
+router = APIRouter(
+    prefix="/legacy", tags=["web-legacy"], dependencies=[Depends(ensure_csrf_dep)]
+)
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
@@ -291,7 +293,7 @@ async def save_settings(request: Request, admin: User = Depends(require_admin)):
     if config.is_configured():
         _start_scheduler()
 
-    return RedirectResponse(url="/settings", status_code=303)
+    return RedirectResponse(url="/legacy/settings", status_code=303)
 
 
 @router.post("/settings/profile")
@@ -321,7 +323,7 @@ async def save_profile(
     logger.info(
         "Profile edited by user=%s, now v%d", user.username, profile.profile_version
     )
-    return RedirectResponse(url="/settings", status_code=303)
+    return RedirectResponse(url="/legacy/settings", status_code=303)
 
 
 @router.post("/settings/profile/synthesize")
@@ -382,7 +384,7 @@ async def admin_create_user(
     )
     session.add(new_user)
     await session.commit()
-    return RedirectResponse(url="/settings", status_code=303)
+    return RedirectResponse(url="/legacy/settings", status_code=303)
 
 
 @router.post("/admin/user/{user_id}/role")
@@ -400,7 +402,7 @@ async def admin_change_role(
 
     target = await session.get(User, user_id)
     if not target:
-        return RedirectResponse(url="/settings", status_code=303)
+        return RedirectResponse(url="/legacy/settings", status_code=303)
 
     if target.id == admin.id and new_role != "admin":
         return RedirectResponse(
@@ -410,7 +412,7 @@ async def admin_change_role(
     target.role = new_role
     target.role_source = "manual"
     await session.commit()
-    return RedirectResponse(url="/settings", status_code=303)
+    return RedirectResponse(url="/legacy/settings", status_code=303)
 
 
 @router.post("/article/{article_id}/process")
@@ -453,7 +455,7 @@ async def create_api_key(
     session.add(api_key)
     await session.commit()
 
-    return RedirectResponse(url=f"/settings?new_key={full_key}", status_code=303)
+    return RedirectResponse(url=f"/legacy/settings?new_key={full_key}", status_code=303)
 
 
 @router.post("/settings/keys/{key_id}/revoke")
@@ -469,13 +471,17 @@ async def revoke_api_key(
     if api_key and api_key.user_id == user.id:
         await session.delete(api_key)
         await session.commit()
-    return RedirectResponse(url="/settings", status_code=303)
+    return RedirectResponse(url="/legacy/settings", status_code=303)
 
 
-# ── Onboarding ────────────────────────────────────────────────
+# ── Onboarding (stays at original paths, not under /legacy/) ──
+
+onboarding_router = APIRouter(
+    tags=["onboarding"], dependencies=[Depends(ensure_csrf_dep)]
+)
 
 
-@router.get("/onboarding", response_class=HTMLResponse)
+@onboarding_router.get("/onboarding", response_class=HTMLResponse)
 async def onboarding_page(
     request: Request,
     user: User = Depends(get_current_user),
@@ -536,7 +542,7 @@ async def onboarding_page(
     )
 
 
-@router.post("/onboarding/activate-feeds")
+@onboarding_router.post("/onboarding/activate-feeds")
 async def onboarding_activate_feeds(
     request: Request,
     user: User = Depends(get_current_user),
