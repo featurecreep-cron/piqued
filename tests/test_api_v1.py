@@ -47,7 +47,9 @@ async def _create_user(role="admin") -> tuple[User, str]:
     key_hash = hashlib.sha256(full_key.encode("utf-8")).hexdigest()
 
     async with async_session() as session:
-        user = User(username=f"test_{secrets.token_hex(4)}", role=role, role_source="manual")
+        user = User(
+            username=f"test_{secrets.token_hex(4)}", role=role, role_source="manual"
+        )
         session.add(user)
         await session.flush()
 

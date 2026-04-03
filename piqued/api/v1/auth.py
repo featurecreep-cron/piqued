@@ -16,9 +16,7 @@ logger = logging.getLogger(__name__)
 KEY_PREFIX = "pqd_"
 
 
-async def _resolve_bearer_token(
-    token: str, session: AsyncSession
-) -> User | None:
+async def _resolve_bearer_token(token: str, session: AsyncSession) -> User | None:
     """Look up a Bearer token and return its owner, or None."""
     if not token.startswith(KEY_PREFIX):
         return None

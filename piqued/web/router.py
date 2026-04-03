@@ -453,9 +453,7 @@ async def create_api_key(
     session.add(api_key)
     await session.commit()
 
-    return RedirectResponse(
-        url=f"/settings?new_key={full_key}", status_code=303
-    )
+    return RedirectResponse(url=f"/settings?new_key={full_key}", status_code=303)
 
 
 @router.post("/settings/keys/{key_id}/revoke")
