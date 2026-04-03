@@ -202,7 +202,9 @@ async def article_detail_view(
         url=article.url,
         feed_title=article.feed.title if article.feed else "",
         published_at=article.published_at,
-        status=article.status.value if hasattr(article.status, "value") else str(article.status),
+        status=article.status.value
+        if hasattr(article.status, "value")
+        else str(article.status),
         sections=sections,
     )
 
@@ -525,7 +527,9 @@ async def create_user_api(
         raise HTTPException(status_code=409, detail="Username already exists")
     new_user = User(
         username=username,
-        password_hash=bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8"),
+        password_hash=bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode(
+            "utf-8"
+        ),
         role=role,
         role_source="manual",
     )

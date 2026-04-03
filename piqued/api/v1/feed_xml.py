@@ -31,7 +31,9 @@ async def rss_feed(
     rss = Element("rss", version="2.0")
     channel = SubElement(rss, "channel")
     SubElement(channel, "title").text = f"Piqued — {user.username}"
-    SubElement(channel, "description").text = "Personalized article sections from Piqued"
+    SubElement(
+        channel, "description"
+    ).text = "Personalized article sections from Piqued"
     SubElement(channel, "lastBuildDate").text = datetime.now(timezone.utc).strftime(
         "%a, %d %b %Y %H:%M:%S +0000"
     )
@@ -52,7 +54,9 @@ async def rss_feed(
             SubElement(item, "pubDate").text = article.published_at.strftime(
                 "%a, %d %b %Y %H:%M:%S +0000"
             )
-        SubElement(item, "guid", isPermaLink="false").text = f"piqued-section-{section.id}"
+        SubElement(
+            item, "guid", isPermaLink="false"
+        ).text = f"piqued-section-{section.id}"
 
         tags = section.tags_list
         for tag in tags:

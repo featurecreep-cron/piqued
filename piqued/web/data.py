@@ -101,9 +101,7 @@ async def get_home_sections(
         )
         has_active_feeds = bool(active_feeds)
 
-    tag_weights, total_feedback, weight_objects = await _get_user_weights(
-        session, user
-    )
+    tag_weights, total_feedback, weight_objects = await _get_user_weights(session, user)
 
     all_flat_sections = [s for a in articles for s in a.sections]
     score_map = await _get_section_scores(
@@ -144,9 +142,7 @@ async def get_home_sections(
     }
 
 
-async def get_feed_detail(
-    feed_id: int, session: AsyncSession
-) -> dict | None:
+async def get_feed_detail(feed_id: int, session: AsyncSession) -> dict | None:
     """Data for single feed view: feed + recent articles."""
     feed = await session.get(Feed, feed_id)
     if not feed:
@@ -177,9 +173,7 @@ async def get_article_detail(
     if not article:
         return None
 
-    tag_weights, total_feedback, weight_objects = await _get_user_weights(
-        session, user
-    )
+    tag_weights, total_feedback, weight_objects = await _get_user_weights(session, user)
     score_map = await _get_section_scores(
         session, user, article.sections, tag_weights, total_feedback
     )
