@@ -2,6 +2,7 @@
 import { RouterView } from 'vue-router'
 import ToastContainer from '@/components/layout/ToastContainer.vue'
 import KeyboardHelp from '@/components/layout/KeyboardHelp.vue'
+import CommandPalette from '@/components/layout/CommandPalette.vue'
 import { useTheme } from '@/composables/useTheme'
 import { useKeyboard } from '@/composables/useKeyboard'
 import { useAuthStore } from '@/stores/auth'
@@ -50,6 +51,7 @@ const auth = useAuthStore()
       v-if="helpVisible"
       @close="helpVisible = false"
     />
+    <CommandPalette />
   </div>
 </template>
 

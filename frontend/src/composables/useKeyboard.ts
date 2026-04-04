@@ -9,6 +9,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useContentStore } from '@/stores/content'
 import { useFeedback } from '@/composables/useFeedback'
 import { useLayout } from '@/composables/useLayout'
+import { togglePalette } from '@/composables/useCommandPalette'
 
 export function useKeyboard() {
   const helpVisible = ref(false)
@@ -23,6 +24,13 @@ export function useKeyboard() {
   }
 
   function handleKeydown(e: KeyboardEvent) {
+    // Cmd+K works even when input is focused
+    if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault()
+      togglePalette()
+      return
+    }
+
     if (isInputFocused()) return
 
     // Global bindings

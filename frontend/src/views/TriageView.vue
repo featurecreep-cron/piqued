@@ -5,6 +5,7 @@ import { useLayout } from '@/composables/useLayout'
 import DateNav from '@/components/sections/DateNav.vue'
 import RiverLayout from '@/components/triage/RiverLayout.vue'
 import ReaderLayout from '@/components/triage/ReaderLayout.vue'
+import ColumnsLayout from '@/components/triage/ColumnsLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 
@@ -25,7 +26,7 @@ function handleDateSelect(date: string) {
 <template>
   <div
     class="triage-view"
-    :class="{ 'triage-view--reader': layout.isReader.value }"
+    :class="{ 'triage-view--fullwidth': layout.isReader.value || layout.isColumns.value }"
   >
     <div class="triage-header">
       <h2 class="triage-title">Triage</h2>
@@ -46,6 +47,14 @@ function handleDateSelect(date: string) {
             @click="layout.setMode('reader')"
           >
             Reader
+          </button>
+          <button
+            class="layout-btn"
+            :class="{ active: layout.isColumns.value }"
+            aria-label="Columns layout"
+            @click="layout.setMode('columns')"
+          >
+            Columns
           </button>
         </div>
         <DateNav
@@ -77,11 +86,7 @@ function handleDateSelect(date: string) {
 
     <RiverLayout v-else-if="layout.isRiver.value" />
     <ReaderLayout v-else-if="layout.isReader.value" />
-
-    <EmptyState
-      v-else
-      message="Column mode coming soon."
-    />
+    <ColumnsLayout v-else-if="layout.isColumns.value" />
   </div>
 </template>
 
@@ -91,7 +96,7 @@ function handleDateSelect(date: string) {
   margin: 0 auto;
 }
 
-.triage-view--reader {
+.triage-view--fullwidth {
   max-width: none;
   margin: 0;
   padding: 0;
@@ -104,7 +109,7 @@ function handleDateSelect(date: string) {
   margin-bottom: 1.25rem;
 }
 
-.triage-view--reader .triage-header {
+.triage-view--fullwidth .triage-header {
   padding: 0 0.75rem;
   margin-bottom: 0.5rem;
 }
