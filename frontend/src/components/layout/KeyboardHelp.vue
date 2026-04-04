@@ -5,6 +5,7 @@ defineEmits<{
 
 const globalShortcuts = [
   { key: '?', description: 'Toggle this help' },
+  { key: 'v', description: 'Cycle layout mode (River / Reader)' },
   { key: 'Escape', description: 'Close overlay / go back' },
 ]
 

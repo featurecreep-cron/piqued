@@ -8,6 +8,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useContentStore } from '@/stores/content'
 import { useFeedback } from '@/composables/useFeedback'
+import { useLayout } from '@/composables/useLayout'
 
 export function useKeyboard() {
   const helpVisible = ref(false)
@@ -39,11 +40,19 @@ export function useKeyboard() {
       return
     }
 
-    // Skip river bindings if help overlay is open
+    // Skip mode bindings if help overlay is open
     if (helpVisible.value) return
 
     const content = useContentStore()
     const feedback = useFeedback()
+    const layout = useLayout()
+
+    // Layout cycling
+    if (e.key === 'v' && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault()
+      layout.cycle()
+      return
+    }
 
     switch (e.key) {
       case 'j':
