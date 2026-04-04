@@ -14,6 +14,10 @@ const auth = useAuthStore()
 
 <template>
   <div class="app">
+    <a
+      href="#main-content"
+      class="skip-link"
+    >Skip to content</a>
     <header class="app-header">
       <h1 class="app-title">Piqued</h1>
       <nav class="app-nav">
@@ -41,9 +45,19 @@ const auth = useAuthStore()
           v-if="auth.isAuthenticated"
           class="toolbar-user"
         >{{ auth.username }}</span>
+        <button
+          v-if="auth.isAuthenticated"
+          class="toolbar-btn toolbar-btn--logout"
+          @click="auth.logout()"
+        >
+          Logout
+        </button>
       </div>
     </header>
-    <main class="app-main">
+    <main
+      id="main-content"
+      class="app-main"
+    >
       <RouterView />
     </main>
     <ToastContainer />
@@ -91,7 +105,7 @@ const auth = useAuthStore()
 }
 
 .app-nav a:hover,
-.app-nav a.router-link-active {
+.app-nav a.router-link-exact-active {
   color: var(--pq-accent);
 }
 
@@ -114,6 +128,10 @@ const auth = useAuthStore()
 .toolbar-btn:hover {
   color: var(--pq-text);
   border-color: var(--pq-muted);
+}
+
+.toolbar-btn--logout {
+  font-size: 0.75rem;
 }
 
 .toolbar-user {
