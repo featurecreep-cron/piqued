@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -34,6 +35,19 @@ const router = createRouter({
       component: () => import('@/views/LogView.vue'),
     },
   ],
+})
+
+router.beforeEach(async () => {
+  const auth = useAuthStore()
+  try {
+    const ok = await auth.checkSession()
+    if (!ok) {
+      auth.redirectToLogin()
+      return false
+    }
+  } catch {
+    // Network error — let the page load, it'll show an error state
+  }
 })
 
 export default router

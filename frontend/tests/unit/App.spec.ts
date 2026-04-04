@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createRouter, createWebHistory } from 'vue-router'
+import { createPinia } from 'pinia'
 import App from '@/App.vue'
 
 const router = createRouter({
@@ -15,7 +16,7 @@ describe('App', () => {
 
     const wrapper = mount(App, {
       global: {
-        plugins: [router],
+        plugins: [router, createPinia()],
       },
     })
 
@@ -28,14 +29,15 @@ describe('App', () => {
 
     const wrapper = mount(App, {
       global: {
-        plugins: [router],
+        plugins: [router, createPinia()],
       },
     })
 
     const links = wrapper.findAll('.app-nav a')
-    expect(links.length).toBe(3)
+    expect(links.length).toBe(4)
     expect(links[0].text()).toBe('Triage')
     expect(links[1].text()).toBe('Feeds')
-    expect(links[2].text()).toBe('Settings')
+    expect(links[2].text()).toBe('Log')
+    expect(links[3].text()).toBe('Settings')
   })
 })
