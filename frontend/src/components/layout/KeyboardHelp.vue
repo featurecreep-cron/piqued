@@ -3,10 +3,15 @@ defineEmits<{
   close: []
 }>()
 
-const shortcuts = [
+const globalShortcuts = [
   { key: '?', description: 'Toggle this help' },
   { key: 'Escape', description: 'Close overlay / go back' },
-  { key: 'v', description: 'Cycle layout mode (coming soon)' },
+]
+
+const riverShortcuts = [
+  { key: 'j / k', description: 'Next / previous section' },
+  { key: 'u / d', description: 'Upvote / downvote focused section' },
+  { key: 'o', description: 'Open article in new tab' },
 ]
 </script>
 
@@ -30,10 +35,11 @@ const shortcuts = [
             &times;
           </button>
         </div>
+        <h3 class="help-section-title">Global</h3>
         <table class="help-table">
           <tbody>
             <tr
-              v-for="s in shortcuts"
+              v-for="s in globalShortcuts"
               :key="s.key"
             >
               <td class="help-key">
@@ -43,7 +49,20 @@ const shortcuts = [
             </tr>
           </tbody>
         </table>
-        <p class="help-hint">More shortcuts will appear as features are added.</p>
+        <h3 class="help-section-title">Triage (River mode)</h3>
+        <table class="help-table">
+          <tbody>
+            <tr
+              v-for="s in riverShortcuts"
+              :key="s.key"
+            >
+              <td class="help-key">
+                <kbd>{{ s.key }}</kbd>
+              </td>
+              <td class="help-desc">{{ s.description }}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </Teleport>
@@ -82,6 +101,19 @@ const shortcuts = [
   font-weight: 600;
   margin: 0;
   color: var(--pq-text);
+}
+
+.help-section-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--pq-muted);
+  margin: 0.75rem 0 0.25rem;
+}
+
+.help-section-title:first-of-type {
+  margin-top: 0;
 }
 
 .help-close {

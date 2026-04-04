@@ -1,11 +1,13 @@
 /**
  * Keyboard navigation composable.
  *
- * Step 3: global bindings only (?, Escape).
- * Step 4+: mode-aware bindings (river, reader, columns).
+ * Global bindings: ?, Escape
+ * River mode: j/k (navigate), u/d (vote), Enter (expand), o (open)
  */
 
 import { ref, onMounted, onUnmounted } from 'vue'
+import { useContentStore } from '@/stores/content'
+import { useFeedback } from '@/composables/useFeedback'
 
 export function useKeyboard() {
   const helpVisible = ref(false)
@@ -22,6 +24,7 @@ export function useKeyboard() {
   function handleKeydown(e: KeyboardEvent) {
     if (isInputFocused()) return
 
+    // Global bindings
     if (e.key === '?' && !e.ctrlKey && !e.metaKey) {
       e.preventDefault()
       helpVisible.value = !helpVisible.value
@@ -33,7 +36,55 @@ export function useKeyboard() {
         helpVisible.value = false
         e.preventDefault()
       }
+      return
     }
+
+    // Skip river bindings if help overlay is open
+    if (helpVisible.value) return
+
+    const content = useContentStore()
+    const feedback = useFeedback()
+
+    switch (e.key) {
+      case 'j':
+        e.preventDefault()
+        content.focusNext()
+        scrollFocusedIntoView()
+        break
+      case 'k':
+        e.preventDefault()
+        content.focusPrev()
+        scrollFocusedIntoView()
+        break
+      case 'u': {
+        e.preventDefault()
+        const section = content.focusedSection
+        if (section) feedback.vote(section.id, 1)
+        break
+      }
+      case 'd': {
+        e.preventDefault()
+        const section = content.focusedSection
+        if (section) feedback.vote(section.id, -1)
+        break
+      }
+      case 'o': {
+        e.preventDefault()
+        const section = content.focusedSection
+        if (section?.article_url) {
+          window.open(section.article_url, '_blank', 'noopener')
+          feedback.clickThrough(section.id)
+        }
+        break
+      }
+    }
+  }
+
+  function scrollFocusedIntoView() {
+    requestAnimationFrame(() => {
+      const el = document.querySelector('.section-card.focused')
+      el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    })
   }
 
   onMounted(() => {
