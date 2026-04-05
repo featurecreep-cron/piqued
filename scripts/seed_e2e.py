@@ -3,7 +3,6 @@
 
 import asyncio
 import os
-import sys
 
 # Set test DB path before any piqued imports
 os.environ["PIQUED_DATABASE_PATH"] = os.environ.get(
