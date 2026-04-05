@@ -452,7 +452,9 @@ VALID_LAYOUTS = {"river", "reader", "columns"}
 @router.get("/preferences", response_model=UserPreferences)
 async def get_preferences(user: User = Depends(get_api_user)):
     raw = json.loads(user.preferences or "{}")
-    return UserPreferences(**{k: v for k, v in raw.items() if k in UserPreferences.model_fields})
+    return UserPreferences(
+        **{k: v for k, v in raw.items() if k in UserPreferences.model_fields}
+    )
 
 
 @router.put("/preferences", response_model=UserPreferences)
@@ -465,18 +467,26 @@ async def update_preferences(
     updates = body.model_dump(exclude_none=True)
 
     if "theme" in updates and updates["theme"] not in VALID_THEMES:
-        raise HTTPException(status_code=422, detail=f"theme must be one of {VALID_THEMES}")
+        raise HTTPException(
+            status_code=422, detail=f"theme must be one of {VALID_THEMES}"
+        )
     if "layout_mode" in updates and updates["layout_mode"] not in VALID_LAYOUTS:
-        raise HTTPException(status_code=422, detail=f"layout_mode must be one of {VALID_LAYOUTS}")
+        raise HTTPException(
+            status_code=422, detail=f"layout_mode must be one of {VALID_LAYOUTS}"
+        )
     if "items_per_page" in updates:
         if not (10 <= updates["items_per_page"] <= 200):
-            raise HTTPException(status_code=422, detail="items_per_page must be between 10 and 200")
+            raise HTTPException(
+                status_code=422, detail="items_per_page must be between 10 and 200"
+            )
 
     current.update(updates)
     user.preferences = json.dumps(current)
     await session.commit()
 
-    return UserPreferences(**{k: v for k, v in current.items() if k in UserPreferences.model_fields})
+    return UserPreferences(
+        **{k: v for k, v in current.items() if k in UserPreferences.model_fields}
+    )
 
 
 # ── Admin: feeds ────────────────────────────────────────────────
