@@ -5,8 +5,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI, Request
-from fastapi.responses import RedirectResponse
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from piqued import config
@@ -110,75 +109,8 @@ async def _seed_feeds():
 
 app = FastAPI(title="Piqued", version="0.4.0", lifespan=lifespan)
 
-# Middleware stack — add_middleware is LIFO: last added = outermost
-# We want: [SessionMiddleware] -> [CSRFMiddleware] -> [route]
-# So add CSRF first (innermost), then Session (outermost)
-
-from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
+# Session middleware — SameSite=Lax (Starlette default) provides CSRF protection
 from starlette.middleware.sessions import SessionMiddleware  # noqa: E402
-
-
-class CSRFMiddleware(BaseHTTPMiddleware):
-    PUBLIC_PATHS = {
-        "/health",
-        "/login",
-        "/login/oidc",
-        "/auth/callback",
-        "/logout",
-        "/setup",
-    }
-
-    async def dispatch(self, request: Request, call_next):
-        from fastapi.responses import JSONResponse
-
-        path = request.url.path
-
-        if path in self.PUBLIC_PATHS or path.startswith(("/static", "/api/v1/")):
-            return await call_next(request)
-
-        if not config.is_configured():
-            return RedirectResponse(url="/setup", status_code=303)
-
-        # Ensure CSRF token in session + request.state
-        request.state.csrf = ""
-        if "csrf" not in request.session:
-            import secrets
-
-            request.session["csrf"] = secrets.token_hex(16)
-        request.state.csrf = request.session["csrf"]
-
-        # CSRF protection on state-mutating requests
-        if request.method in ("POST", "PUT", "DELETE"):
-            session_csrf = request.session.get("csrf", "")
-            xhr_token = request.headers.get("X-CSRF-Token", "")
-            if xhr_token and xhr_token == session_csrf:
-                pass
-            else:
-                content_type = request.headers.get("content-type", "")
-                if "form" in content_type:
-                    # Read body and cache it so route handlers can re-read
-                    body = await request.body()
-                    from urllib.parse import parse_qs
-
-                    parsed = parse_qs(body.decode("utf-8"))
-                    form_csrf = parsed.get("_csrf", [""])[0]
-                    if form_csrf != session_csrf or not session_csrf:
-                        return JSONResponse(
-                            {"error": "CSRF check failed"}, status_code=403
-                        )
-                elif not xhr_token:
-                    return JSONResponse({"error": "CSRF check failed"}, status_code=403)
-
-        return await call_next(request)
-
-
-# CSRF added first = innermost, Session added second = outermost
-# Request flow: Session -> CSRF -> route
-app.add_middleware(CSRFMiddleware)
-
-# Session secret: try DB first, fall back to env var, then generate a random one.
-# Note: at import time the DB may not be loaded yet, so this often gets the fallback.
-# ensure_session_secret() in lifespan saves a permanent key to DB for next boot.
 import os as _os  # noqa: E402
 
 session_secret = (
@@ -194,14 +126,13 @@ from piqued.api.v1.feed_xml import router as api_v1_feed_router  # noqa: E402
 from piqued.api.v1.router import router as api_v1_router  # noqa: E402
 from piqued.auth.router import router as auth_router  # noqa: E402
 from piqued.feedback.router import router as feedback_router  # noqa: E402
-from piqued.web.router import onboarding_router, router as web_router  # noqa: E402
+from piqued.web.router import onboarding_router  # noqa: E402
 
 app.include_router(api_v1_router)
 app.include_router(api_v1_feed_router)
 app.include_router(auth_router)
 app.include_router(feedback_router)
 app.include_router(onboarding_router)
-app.include_router(web_router)
 
 # Mount static files
 static_dir = Path(__file__).parent / "web" / "static"
@@ -236,7 +167,6 @@ _SPA_EXCLUDED = (
     "/onboarding",
     "/auth/",
     "/health",
-    "/legacy/",
     "/static",
     "/assets",
 )
