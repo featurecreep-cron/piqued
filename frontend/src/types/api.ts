@@ -188,3 +188,17 @@ export interface ApiKeyItem {
 export interface ApiKeyList {
   keys: ApiKeyItem[]
 }
+
+export interface UserPreferences {
+  theme?: string
+  layout_mode?: string
+  items_per_page?: number
+  column_config?: string[] | null
+}
+
+export interface UserPreferencesUpdate {
+  theme?: string | null
+  layout_mode?: string | null
+  items_per_page?: number | null
+  column_config?: string[] | null
+}

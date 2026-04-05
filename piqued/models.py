@@ -58,6 +58,9 @@ class User(Base):
     role_source: Mapped[str] = mapped_column(
         String, default="auto"
     )  # 'auto', 'manual', 'oidc'
+    preferences: Mapped[str] = mapped_column(
+        Text, default="{}"
+    )  # JSON blob: theme, layout_mode, items_per_page, column_config
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     last_login: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 

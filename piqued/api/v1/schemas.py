@@ -221,3 +221,20 @@ class ApiKeyItem(BaseModel):
 
 class ApiKeyList(BaseModel):
     keys: list[ApiKeyItem]
+
+
+# --- User preferences ---
+
+
+class UserPreferences(BaseModel):
+    theme: str = "light"
+    layout_mode: str = "river"
+    items_per_page: int = 50
+    column_config: list[str] | None = None
+
+
+class UserPreferencesUpdate(BaseModel):
+    theme: str | None = None
+    layout_mode: str | None = None
+    items_per_page: int | None = None
+    column_config: list[str] | None = None

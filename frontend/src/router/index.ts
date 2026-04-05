@@ -1,5 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useTheme } from '@/composables/useTheme'
+import { useLayout } from '@/composables/useLayout'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -45,6 +47,11 @@ router.beforeEach(async () => {
       auth.redirectToLogin()
       return false
     }
+    // Sync preferences from server (no-op after first call)
+    const { syncFromServer: syncTheme } = useTheme()
+    const { syncFromServer: syncLayout } = useLayout()
+    syncTheme()
+    syncLayout()
   } catch {
     // Network error — let the page load, it'll show an error state
   }

@@ -330,3 +330,141 @@ class TestApiFeedXml:
             assert r.status_code == 200
             assert "xml" in r.headers["content-type"]
             assert "<rss" in r.text
+
+
+class TestApiPreferences:
+    @pytest.mark.asyncio
+    async def test_get_defaults(self, transport):
+        _, token = await _create_user()
+        headers = {"Authorization": f"Bearer {token}"}
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            r = await client.get("/api/v1/preferences", headers=headers)
+            assert r.status_code == 200
+            data = r.json()
+            assert data["theme"] == "light"
+            assert data["layout_mode"] == "river"
+            assert data["items_per_page"] == 50
+            assert data["column_config"] is None
+
+    @pytest.mark.asyncio
+    async def test_update_theme(self, transport):
+        _, token = await _create_user()
+        headers = {"Authorization": f"Bearer {token}"}
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            r = await client.put(
+                "/api/v1/preferences",
+                json={"theme": "dark"},
+                headers=headers,
+            )
+            assert r.status_code == 200
+            assert r.json()["theme"] == "dark"
+
+            # Verify it persisted
+            r = await client.get("/api/v1/preferences", headers=headers)
+            assert r.json()["theme"] == "dark"
+            # Other fields unchanged
+            assert r.json()["layout_mode"] == "river"
+
+    @pytest.mark.asyncio
+    async def test_update_layout_mode(self, transport):
+        _, token = await _create_user()
+        headers = {"Authorization": f"Bearer {token}"}
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            r = await client.put(
+                "/api/v1/preferences",
+                json={"layout_mode": "columns"},
+                headers=headers,
+            )
+            assert r.status_code == 200
+            assert r.json()["layout_mode"] == "columns"
+
+    @pytest.mark.asyncio
+    async def test_update_multiple(self, transport):
+        _, token = await _create_user()
+        headers = {"Authorization": f"Bearer {token}"}
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            r = await client.put(
+                "/api/v1/preferences",
+                json={"theme": "dark", "layout_mode": "reader", "items_per_page": 100},
+                headers=headers,
+            )
+            assert r.status_code == 200
+            data = r.json()
+            assert data["theme"] == "dark"
+            assert data["layout_mode"] == "reader"
+            assert data["items_per_page"] == 100
+
+    @pytest.mark.asyncio
+    async def test_update_column_config(self, transport):
+        _, token = await _create_user()
+        headers = {"Authorization": f"Bearer {token}"}
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            r = await client.put(
+                "/api/v1/preferences",
+                json={"column_config": ["AI", "Security", "Homelab"]},
+                headers=headers,
+            )
+            assert r.status_code == 200
+            assert r.json()["column_config"] == ["AI", "Security", "Homelab"]
+
+    @pytest.mark.asyncio
+    async def test_invalid_theme_rejected(self, transport):
+        _, token = await _create_user()
+        headers = {"Authorization": f"Bearer {token}"}
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            r = await client.put(
+                "/api/v1/preferences",
+                json={"theme": "blue"},
+                headers=headers,
+            )
+            assert r.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_invalid_layout_rejected(self, transport):
+        _, token = await _create_user()
+        headers = {"Authorization": f"Bearer {token}"}
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            r = await client.put(
+                "/api/v1/preferences",
+                json={"layout_mode": "grid"},
+                headers=headers,
+            )
+            assert r.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_items_per_page_bounds(self, transport):
+        _, token = await _create_user()
+        headers = {"Authorization": f"Bearer {token}"}
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            r = await client.put(
+                "/api/v1/preferences",
+                json={"items_per_page": 5},
+                headers=headers,
+            )
+            assert r.status_code == 422
+
+            r = await client.put(
+                "/api/v1/preferences",
+                json={"items_per_page": 500},
+                headers=headers,
+            )
+            assert r.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_preferences_per_user(self, transport):
+        _, token_a = await _create_user(role="user")
+        _, token_b = await _create_user(role="user")
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            # User A sets dark theme
+            await client.put(
+                "/api/v1/preferences",
+                json={"theme": "dark"},
+                headers={"Authorization": f"Bearer {token_a}"},
+            )
+
+            # User B still has default
+            r = await client.get(
+                "/api/v1/preferences",
+                headers={"Authorization": f"Bearer {token_b}"},
+            )
+            assert r.json()["theme"] == "light"
