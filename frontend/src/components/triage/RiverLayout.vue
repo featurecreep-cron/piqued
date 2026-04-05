@@ -21,10 +21,7 @@ async function handleClickThrough(sectionId: number) {
 
 <template>
   <div class="river">
-    <div
-      v-if="content.aboveSections.length"
-      class="river-tier"
-    >
+    <div class="river-tier">
       <h3 class="tier-label">Likely</h3>
       <SectionCard
         v-for="section in content.aboveSections"
@@ -37,12 +34,15 @@ async function handleClickThrough(sectionId: number) {
         @downweight="handleDownweight"
         @click-through="handleClickThrough"
       />
+      <p
+        v-if="!content.aboveSections.length"
+        class="tier-empty"
+      >
+        Nothing here today
+      </p>
     </div>
 
-    <div
-      v-if="content.surpriseSections.length"
-      class="river-tier"
-    >
+    <div class="river-tier">
       <h3 class="tier-label">Discover</h3>
       <SectionCard
         v-for="section in content.surpriseSections"
@@ -55,12 +55,15 @@ async function handleClickThrough(sectionId: number) {
         @downweight="handleDownweight"
         @click-through="handleClickThrough"
       />
+      <p
+        v-if="!content.surpriseSections.length"
+        class="tier-empty"
+      >
+        Nothing here today
+      </p>
     </div>
 
-    <div
-      v-if="content.belowSections.length"
-      class="river-tier"
-    >
+    <div class="river-tier">
       <h3 class="tier-label">Below threshold</h3>
       <SectionCard
         v-for="section in content.belowSections"
@@ -73,6 +76,12 @@ async function handleClickThrough(sectionId: number) {
         @downweight="handleDownweight"
         @click-through="handleClickThrough"
       />
+      <p
+        v-if="!content.belowSections.length"
+        class="tier-empty"
+      >
+        Nothing here today
+      </p>
     </div>
   </div>
 </template>
@@ -100,5 +109,12 @@ async function handleClickThrough(sectionId: number) {
   margin: 0 0 0.5rem;
   padding-bottom: 0.375rem;
   border-bottom: 1px solid var(--pq-border);
+}
+
+.tier-empty {
+  font-size: 0.8125rem;
+  color: var(--pq-muted);
+  padding: 0.75rem 0;
+  margin: 0;
 }
 </style>

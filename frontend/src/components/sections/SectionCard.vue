@@ -114,6 +114,11 @@ const flags = computed(() => {
   outline: none;
 }
 
+.section-card:focus-visible {
+  outline: 2px solid var(--pq-accent);
+  outline-offset: 2px;
+}
+
 .section-card:hover {
   border-color: var(--pq-muted);
 }

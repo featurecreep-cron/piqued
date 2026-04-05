@@ -127,9 +127,14 @@ const auth = useAuthStore()
   border-radius: var(--pq-radius);
   color: var(--pq-muted);
   font-size: 0.875rem;
-  padding: 0.25rem 0.5rem;
+  padding: 0.375rem 0.625rem;
+  min-height: 2rem;
+  min-width: 2rem;
   cursor: pointer;
   line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .toolbar-btn:hover {
   color: var(--pq-text);
