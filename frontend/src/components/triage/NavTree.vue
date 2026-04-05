@@ -63,6 +63,14 @@ function isActive(type: string, value: string): boolean {
         Discover
         <span class="nav-count">{{ content.surpriseSections.length }}</span>
       </button>
+      <button
+        class="nav-item"
+        :class="{ active: isActive('triage', 'below') }"
+        @click="emit('filter', 'triage', 'below')"
+      >
+        Below threshold
+        <span class="nav-count">{{ content.belowSections.length }}</span>
+      </button>
     </div>
 
     <div

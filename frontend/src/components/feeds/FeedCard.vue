@@ -67,7 +67,7 @@ function qualityColor(quality: string): string {
   background: var(--pq-bg);
 }
 
-.feed-card.inactive {
+.feed-card.inactive .feed-main {
   opacity: 0.5;
 }
 

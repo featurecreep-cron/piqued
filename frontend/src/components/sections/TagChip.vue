@@ -47,7 +47,7 @@ defineEmits<{
   cursor: pointer;
   padding: 0 0.125rem;
   line-height: 1;
-  opacity: 0;
+  opacity: 0.35;
   transition: opacity 0.15s;
 }
 
@@ -56,7 +56,7 @@ defineEmits<{
 }
 
 .tag-downweight:hover {
-  opacity: 1 !important;
+  opacity: 1;
   color: var(--pq-danger);
 }
 </style>

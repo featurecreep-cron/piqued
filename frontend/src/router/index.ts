@@ -68,7 +68,13 @@ router.beforeEach(async () => {
     syncTheme()
     syncLayout()
   } catch {
-    // Network error or server down — redirect to login as a safe default
+    // Network error or server down
+    if (auth.isAuthenticated) {
+      // Already authenticated from a prior check — let navigation proceed.
+      // View-level error handling will show inline errors if API calls fail.
+      return
+    }
+    // First load, never authenticated — redirect to login as safe default
     auth.redirectToLogin()
     return false
   }

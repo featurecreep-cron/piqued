@@ -76,7 +76,7 @@ function handleDateSelect(date: string) {
       class="triage-error"
       role="alert"
     >
-      <p>{{ content.error }}</p>
+      <p>Failed to load sections. {{ content.error }}</p>
       <button @click="content.loadSections()">Retry</button>
     </div>
 

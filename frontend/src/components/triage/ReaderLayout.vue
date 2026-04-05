@@ -20,6 +20,7 @@ const filteredSections = computed<SectionItem[]>(() => {
     case 'triage':
       if (f.value === 'likely') return content.aboveSections
       if (f.value === 'discover') return content.surpriseSections
+      if (f.value === 'below') return content.belowSections
       return content.sections
     case 'tag':
       return content.sections.filter((s) => s.topic_tags.includes(f.value))
@@ -54,10 +55,15 @@ const selectedSection = computed<SectionItem | null>(() => {
   return content.sections.find((s) => s.id === selectedSectionId.value) ?? null
 })
 
-// Auto-select first section when filter changes
+// Auto-select first section only on initial load, not on user filter changes
+const initialized = ref(false)
 watch(filteredSections, (sections) => {
-  if (sections.length && (!selectedSectionId.value || !sections.find((s) => s.id === selectedSectionId.value))) {
+  if (!initialized.value && sections.length) {
     selectedSectionId.value = sections[0].id
+    initialized.value = true
+  } else if (selectedSectionId.value && !sections.find((s) => s.id === selectedSectionId.value)) {
+    // Current selection not in filtered list — clear it
+    selectedSectionId.value = null
   }
 }, { immediate: true })
 

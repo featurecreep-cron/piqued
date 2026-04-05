@@ -60,6 +60,12 @@ async function request<T>(
   })
 
   if (!response.ok) {
+    // Session expired — redirect to login
+    if (response.status === 401 && !path.endsWith('/me')) {
+      window.location.href = '/login'
+      throw new ApiError(401, 'Session expired')
+    }
+
     // Try to extract detail from JSON error response
     let detail = response.statusText
     try {
