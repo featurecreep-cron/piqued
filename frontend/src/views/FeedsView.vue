@@ -18,6 +18,7 @@ const feeds = ref<FeedItem[]>([])
 const categories = ref<Record<string, number[]>>({})
 const loading = ref(false)
 const syncing = ref(false)
+const error = ref<string | null>(null)
 
 const grouped = computed(() => {
   const groups: Record<string, FeedItem[]> = {}
@@ -29,12 +30,13 @@ const grouped = computed(() => {
 
 async function loadFeeds() {
   loading.value = true
+  error.value = null
   try {
     const data = await api.get<FeedList>('/feeds')
     feeds.value = data.feeds
     categories.value = data.categories
   } catch (err) {
-    toast.error(err instanceof ApiError ? err.detail : 'Failed to load feeds')
+    error.value = err instanceof ApiError ? err.detail : 'Failed to load feeds'
   } finally {
     loading.value = false
   }
@@ -92,9 +94,23 @@ onMounted(loadFeeds)
       message="Loading feeds..."
     />
 
+    <div
+      v-else-if="error"
+      class="error-state"
+      role="alert"
+    >
+      <p class="error-message">{{ error }}</p>
+      <button
+        class="sync-btn"
+        @click="loadFeeds"
+      >
+        Retry
+      </button>
+    </div>
+
     <EmptyState
       v-else-if="!feeds.length"
-      message="No feeds configured. Use Sync to import from FreshRSS."
+      :message="auth.isAdmin ? 'No feeds configured. Use Sync to import from FreshRSS.' : 'No feeds configured. Contact your admin to import feeds.'"
     />
 
     <div
@@ -187,5 +203,20 @@ onMounted(loadFeeds)
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
   gap: 0.5rem;
+}
+
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 2rem 1rem;
+  text-align: center;
+}
+
+.error-message {
+  font-size: 0.875rem;
+  color: var(--pq-danger);
+  margin: 0;
 }
 </style>

@@ -27,9 +27,12 @@ function add(type: ToastType, message: string) {
   const id = nextId++
   toasts.value.push({ id, type, message })
 
-  setTimeout(() => {
-    dismiss(id)
-  }, AUTO_DISMISS_MS)
+  // Error toasts require manual dismiss; success/info auto-dismiss
+  if (type !== 'error') {
+    setTimeout(() => {
+      dismiss(id)
+    }, AUTO_DISMISS_MS)
+  }
 }
 
 function dismiss(id: number) {

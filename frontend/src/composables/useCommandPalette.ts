@@ -2,7 +2,7 @@
  * Command palette logic.
  *
  * Cmd+K opens the palette. Type to filter commands.
- * Commands: switch layout, jump to date, navigate to views, filter by tag.
+ * Commands: switch layout, jump to date, navigate to views.
  *
  * The visible/query state is module-level so it can be toggled from
  * useKeyboard without needing Vue injection context. The router-dependent
@@ -67,23 +67,6 @@ export function useCommandPalette(router: Router) {
         label: `Jump to ${d}`,
         category: 'Date',
         action: () => content.loadSections(d),
-      })
-    }
-
-    // Tag filters
-    const tags = new Set<string>()
-    for (const s of content.sections) {
-      for (const t of s.topic_tags) tags.add(t)
-    }
-    for (const tag of [...tags].sort()) {
-      cmds.push({
-        id: `tag-${tag}`,
-        label: `Filter by "${tag}"`,
-        category: 'Topic',
-        action: () => {
-          layout.setMode('reader')
-          router.push('/')
-        },
       })
     }
 

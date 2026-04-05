@@ -19,12 +19,14 @@ const feedback = useFeedback()
 const article = ref<ArticleDetail | null>(null)
 const loading = ref(false)
 const processing = ref(false)
+const error = ref<string | null>(null)
 
 // Default threshold — article view doesn't have the triage context
 const threshold = 0.7
 
 async function loadArticle() {
   loading.value = true
+  error.value = null
   try {
     article.value = await api.get<ArticleDetail>(`/articles/${route.params.id}`)
   } catch (err) {
@@ -32,7 +34,7 @@ async function loadArticle() {
       toast.error('Article not found')
       router.push('/')
     } else {
-      toast.error(err instanceof ApiError ? err.detail : 'Failed to load article')
+      error.value = err instanceof ApiError ? err.detail : 'Failed to load article'
     }
   } finally {
     loading.value = false
@@ -79,6 +81,20 @@ onMounted(loadArticle)
       v-if="loading"
       message="Loading article..."
     />
+
+    <div
+      v-else-if="error"
+      class="error-state"
+      role="alert"
+    >
+      <p class="error-message">{{ error }}</p>
+      <button
+        class="action-btn"
+        @click="loadArticle"
+      >
+        Retry
+      </button>
+    </div>
 
     <template v-else-if="article">
       <div class="article-header">
@@ -298,5 +314,20 @@ onMounted(loadArticle)
 
 .section-actions {
   margin-top: 0.5rem;
+}
+
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 2rem 1rem;
+  text-align: center;
+}
+
+.error-message {
+  font-size: 0.875rem;
+  color: var(--pq-danger);
+  margin: 0;
 }
 </style>

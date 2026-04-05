@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useApi, ApiError } from '@/composables/useApi'
 import { useToast } from '@/composables/useToast'
 import { useAuthStore } from '@/stores/auth'
@@ -26,6 +26,7 @@ const profileText = ref('')
 const profileVersion = ref(0)
 const pendingFeedback = ref(0)
 const synthesizing = ref(false)
+const savingProfile = ref(false)
 
 // Config state (admin)
 const settings = ref<Record<string, string>>({})
@@ -35,12 +36,186 @@ const savingConfig = ref(false)
 const apiKeys = ref<ApiKeyItem[]>([])
 const newKeyName = ref('')
 const createdKey = ref<string | null>(null)
+const confirmingRevoke = ref<number | null>(null)
 
 // Users state (admin)
 const users = ref<UserInfo[]>([])
 const newUsername = ref('')
 const newPassword = ref('')
 const newRole = ref('user')
+const confirmingRoleChange = ref<{ userId: number; role: string } | null>(null)
+
+// ── Config field metadata ────────────────────────────────────────
+interface ConfigField {
+  label: string
+  help: string
+  type?: 'text' | 'password' | 'number'
+}
+
+const CONFIG_META: Record<string, { title: string; fields: Record<string, ConfigField> }> = {
+  auth: {
+    title: 'Authentication',
+    fields: {
+      auth_methods: {
+        label: 'Auth methods',
+        help: 'Comma-separated list of enabled methods: oidc, local, header',
+      },
+      session_secret_key: {
+        label: 'Session secret',
+        help: 'Auto-generated on first boot. Change to invalidate all sessions.',
+        type: 'password',
+      },
+      trusted_proxy_ip: {
+        label: 'Trusted proxy IP',
+        help: 'IP allowed to send X-authentik-username headers for proxy auth',
+      },
+    },
+  },
+  oidc: {
+    title: 'OIDC (Authentik)',
+    fields: {
+      oidc_client_id: { label: 'Client ID', help: 'OAuth2 client ID from your identity provider' },
+      oidc_client_secret: { label: 'Client secret', help: 'OAuth2 client secret', type: 'password' },
+      oidc_server_metadata_url: {
+        label: 'Metadata URL',
+        help: 'OpenID Connect discovery URL, e.g. https://auth.example.com/.well-known/openid-configuration',
+      },
+      oidc_admin_group: { label: 'Admin group', help: 'Identity provider group that grants admin role' },
+    },
+  },
+  llm_primary: {
+    title: 'LLM — Primary',
+    fields: {
+      llm_provider: { label: 'Provider', help: 'gemini, openai, or ollama' },
+      llm_model: { label: 'Model', help: 'Model name, e.g. gemini-2.5-flash' },
+      llm_api_key: { label: 'API key', help: 'Provider API key', type: 'password' },
+      llm_base_url: { label: 'Base URL', help: 'Only needed for Ollama (e.g. http://localhost:11434)' },
+    },
+  },
+  llm_classify: {
+    title: 'LLM — Classification (optional)',
+    fields: {
+      llm_classify_provider: { label: 'Provider', help: 'Leave empty to use primary LLM' },
+      llm_classify_model: { label: 'Model', help: 'Override model for content classification' },
+      llm_classify_api_key: { label: 'API key', help: 'Override API key', type: 'password' },
+      llm_classify_base_url: { label: 'Base URL', help: 'Override base URL' },
+    },
+  },
+  llm_scoring: {
+    title: 'LLM — Scoring (optional)',
+    fields: {
+      llm_scoring_provider: { label: 'Provider', help: 'Leave empty to use classification or primary LLM' },
+      llm_scoring_model: { label: 'Model', help: 'Use a cheap/fast model for interest scoring' },
+      llm_scoring_api_key: { label: 'API key', help: 'Override API key', type: 'password' },
+      llm_scoring_base_url: { label: 'Base URL', help: 'Override base URL' },
+    },
+  },
+  freshrss: {
+    title: 'FreshRSS',
+    fields: {
+      freshrss_base_url: { label: 'URL', help: 'Base URL of your FreshRSS instance' },
+      freshrss_username: { label: 'Username', help: 'FreshRSS API username' },
+      freshrss_api_pass: { label: 'API password', help: 'FreshRSS API password', type: 'password' },
+    },
+  },
+  processing: {
+    title: 'Processing',
+    fields: {
+      feed_poll_interval_minutes: { label: 'Poll interval', help: 'Minutes between feed checks', type: 'number' },
+      max_concurrent_articles: { label: 'Concurrent articles', help: 'Max articles processed simultaneously', type: 'number' },
+      max_article_words: { label: 'Max article words', help: 'Articles longer than this are truncated', type: 'number' },
+      daily_token_budget: { label: 'Daily token budget', help: 'Max LLM tokens per day across all tasks', type: 'number' },
+      max_retries: { label: 'Max retries', help: 'Retry count for failed LLM calls', type: 'number' },
+      backlog_order: { label: 'Backlog order', help: 'newest_first or oldest_first' },
+      max_articles_per_cycle: { label: 'Articles per cycle', help: 'Max articles processed per poll cycle', type: 'number' },
+    },
+  },
+  interest: {
+    title: 'Interest Model',
+    fields: {
+      confidence_threshold: { label: 'Confidence threshold', help: 'Score above this appears in "Likely" tier (0-1)', type: 'number' },
+      surprise_surface_pct: { label: 'Surprise surface %', help: 'Fraction of below-threshold items shown as "Discover"', type: 'number' },
+      scoring_mode: { label: 'Scoring mode', help: 'formula, llm, or hybrid' },
+      profile_synthesis_threshold: { label: 'Synthesis threshold', help: 'Feedback count needed before auto-synthesis', type: 'number' },
+      profile_max_words: { label: 'Max profile words', help: 'Profile text truncated to this length for prompts', type: 'number' },
+      scoring_batch_size: { label: 'Scoring batch size', help: 'Sections scored per LLM call', type: 'number' },
+    },
+  },
+  decay: {
+    title: 'Interest Decay',
+    fields: {
+      interest_decay_rate: { label: 'Decay rate', help: 'Weight reduction per decay cycle (0-1)', type: 'number' },
+      interest_decay_after_days: { label: 'Decay after days', help: 'Days without reinforcement before decay starts', type: 'number' },
+    },
+  },
+  output: {
+    title: 'RSS Output',
+    fields: {
+      rss_feed_api_key: { label: 'Feed API key', help: 'API key for authenticated RSS feed access', type: 'password' },
+    },
+  },
+}
+
+// Group settings by category for display
+const configGroups = computed(() => {
+  const groups: { title: string; fields: { key: string; label: string; help: string; type: string }[] }[] = []
+  const assigned = new Set<string>()
+
+  for (const [, group] of Object.entries(CONFIG_META)) {
+    const fields: { key: string; label: string; help: string; type: string }[] = []
+    for (const [key, meta] of Object.entries(group.fields)) {
+      if (key in settings.value) {
+        fields.push({
+          key,
+          label: meta.label,
+          help: meta.help,
+          type: meta.type || (key.includes('key') || key.includes('pass') || key.includes('secret') ? 'password' : 'text'),
+        })
+        assigned.add(key)
+      }
+    }
+    if (fields.length) {
+      groups.push({ title: group.title, fields })
+    }
+  }
+
+  // Any unrecognized keys go in an "Other" group
+  const other: { key: string; label: string; help: string; type: string }[] = []
+  for (const key of Object.keys(settings.value)) {
+    if (!assigned.has(key)) {
+      other.push({
+        key,
+        label: key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+        help: '',
+        type: key.includes('key') || key.includes('pass') || key.includes('secret') ? 'password' : 'text',
+      })
+    }
+  }
+  if (other.length) {
+    groups.push({ title: 'Other', fields: other })
+  }
+
+  return groups
+})
+
+function formatDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    })
+  } catch {
+    return iso
+  }
+}
+
+function copyToClipboard(text: string) {
+  navigator.clipboard.writeText(text).then(
+    () => toast.success('Copied to clipboard'),
+    () => toast.error('Copy failed — select and copy manually'),
+  )
+}
 
 async function loadProfile() {
   try {
@@ -54,11 +229,14 @@ async function loadProfile() {
 }
 
 async function saveProfile() {
+  savingProfile.value = true
   try {
     await api.put('/profile', { profile_text: profileText.value })
     toast.success('Profile saved')
   } catch (err) {
     toast.error(err instanceof ApiError ? err.detail : 'Save failed')
+  } finally {
+    savingProfile.value = false
   }
 }
 
@@ -116,7 +294,16 @@ async function createKey() {
   }
 }
 
-async function revokeKey(keyId: number) {
+function requestRevoke(keyId: number) {
+  confirmingRevoke.value = keyId
+}
+
+function cancelRevoke() {
+  confirmingRevoke.value = null
+}
+
+async function confirmRevoke(keyId: number) {
+  confirmingRevoke.value = null
   try {
     await api.delete(`/keys/${keyId}`)
     apiKeys.value = apiKeys.value.filter((k) => k.id !== keyId)
@@ -153,7 +340,18 @@ async function createUser() {
   }
 }
 
-async function changeRole(userId: number, role: string) {
+function requestRoleChange(userId: number, role: string) {
+  confirmingRoleChange.value = { userId, role }
+}
+
+function cancelRoleChange() {
+  confirmingRoleChange.value = null
+}
+
+async function confirmRoleChange() {
+  if (!confirmingRoleChange.value) return
+  const { userId, role } = confirmingRoleChange.value
+  confirmingRoleChange.value = null
   try {
     await api.put(`/users/${userId}/role`, { role })
     await loadUsers()
@@ -164,12 +362,11 @@ async function changeRole(userId: number, role: string) {
 
 onMounted(async () => {
   loading.value = true
-  await loadProfile()
-  await loadKeys()
+  const promises: Promise<void>[] = [loadProfile(), loadKeys()]
   if (auth.isAdmin) {
-    await loadConfig()
-    await loadUsers()
+    promises.push(loadConfig(), loadUsers())
   }
+  await Promise.all(promises)
   loading.value = false
 })
 </script>
@@ -222,8 +419,12 @@ onMounted(async () => {
       class="tab-content"
     >
       <div class="field">
-        <label class="field-label">Interest profile</label>
+        <label
+          for="profile-text"
+          class="field-label"
+        >Interest profile</label>
         <textarea
+          id="profile-text"
           v-model="profileText"
           class="field-textarea"
           rows="6"
@@ -233,18 +434,23 @@ onMounted(async () => {
       <div class="field-row">
         <span class="field-info">v{{ profileVersion }} &middot; {{ pendingFeedback }} pending feedback</span>
         <div class="field-actions">
-          <button
-            class="btn"
-            :disabled="synthesizing"
-            @click="synthesize"
-          >
-            {{ synthesizing ? 'Synthesizing...' : 'Synthesize' }}
-          </button>
+          <div class="synthesize-group">
+            <button
+              class="btn"
+              :disabled="synthesizing || pendingFeedback === 0"
+              :title="pendingFeedback === 0 ? 'No pending feedback to incorporate' : ''"
+              @click="synthesize"
+            >
+              {{ synthesizing ? 'Synthesizing...' : 'Synthesize' }}
+            </button>
+            <span class="field-help">Incorporates your upvote/downvote feedback into your interest profile</span>
+          </div>
           <button
             class="btn btn--primary"
+            :disabled="savingProfile"
             @click="saveProfile"
           >
-            Save profile
+            {{ savingProfile ? 'Saving...' : 'Save profile' }}
           </button>
         </div>
       </div>
@@ -256,7 +462,12 @@ onMounted(async () => {
       class="tab-content"
     >
       <div class="key-create">
+        <label
+          for="key-name"
+          class="sr-only"
+        >Key name</label>
         <input
+          id="key-name"
           v-model="newKeyName"
           class="field-input"
           type="text"
@@ -274,7 +485,15 @@ onMounted(async () => {
         class="key-created"
       >
         <p class="key-created-label">New key (copy now — it won't be shown again):</p>
-        <code class="key-created-value">{{ createdKey }}</code>
+        <div class="key-created-row">
+          <code class="key-created-value">{{ createdKey }}</code>
+          <button
+            class="btn btn--small"
+            @click="copyToClipboard(createdKey!)"
+          >
+            Copy
+          </button>
+        </div>
       </div>
       <div class="keys-list">
         <div
@@ -284,11 +503,30 @@ onMounted(async () => {
         >
           <div class="key-info">
             <span class="key-name">{{ key.name || 'Unnamed' }}</span>
-            <span class="key-date">Created {{ key.created_at }}</span>
+            <span class="key-date">Created {{ formatDate(key.created_at) }}</span>
+          </div>
+          <div
+            v-if="confirmingRevoke === key.id"
+            class="confirm-group"
+          >
+            <span class="confirm-text">Revoke this key?</span>
+            <button
+              class="btn btn--danger btn--small"
+              @click="confirmRevoke(key.id)"
+            >
+              Confirm
+            </button>
+            <button
+              class="btn btn--small"
+              @click="cancelRevoke"
+            >
+              Cancel
+            </button>
           </div>
           <button
+            v-else
             class="btn btn--danger"
-            @click="revokeKey(key.id)"
+            @click="requestRevoke(key.id)"
           >
             Revoke
           </button>
@@ -308,16 +546,31 @@ onMounted(async () => {
       class="tab-content"
     >
       <div
-        v-for="(_value, key) in settings"
-        :key="key"
-        class="field"
+        v-for="group in configGroups"
+        :key="group.title"
+        class="config-group"
       >
-        <label class="field-label">{{ key }}</label>
-        <input
-          v-model="settings[key]"
-          class="field-input"
-          :type="key.includes('key') || key.includes('pass') ? 'password' : 'text'"
+        <h3 class="config-group-title">{{ group.title }}</h3>
+        <div
+          v-for="field in group.fields"
+          :key="field.key"
+          class="field"
         >
+          <label
+            :for="`config-${field.key}`"
+            class="field-label"
+          >{{ field.label }}</label>
+          <input
+            :id="`config-${field.key}`"
+            v-model="settings[field.key]"
+            class="field-input"
+            :type="field.type"
+          >
+          <span
+            v-if="field.help"
+            class="field-help"
+          >{{ field.help }}</span>
+        </div>
       </div>
       <div class="field-row">
         <span />
@@ -337,19 +590,38 @@ onMounted(async () => {
       class="tab-content"
     >
       <div class="user-create">
-        <input
-          v-model="newUsername"
-          class="field-input"
-          type="text"
-          placeholder="Username"
-        >
-        <input
-          v-model="newPassword"
-          class="field-input"
-          type="password"
-          placeholder="Password"
-        >
+        <div class="user-create-field">
+          <label
+            for="new-username"
+            class="sr-only"
+          >Username</label>
+          <input
+            id="new-username"
+            v-model="newUsername"
+            class="field-input"
+            type="text"
+            placeholder="Username"
+          >
+        </div>
+        <div class="user-create-field">
+          <label
+            for="new-password"
+            class="sr-only"
+          >Password</label>
+          <input
+            id="new-password"
+            v-model="newPassword"
+            class="field-input"
+            type="password"
+            placeholder="Password"
+          >
+        </div>
+        <label
+          for="new-role"
+          class="sr-only"
+        >Role</label>
         <select
+          id="new-role"
           v-model="newRole"
           class="field-select"
         >
@@ -373,14 +645,41 @@ onMounted(async () => {
             <span class="user-name">{{ user.username }}</span>
             <span class="user-email">{{ user.email || 'No email' }}</span>
           </div>
-          <select
-            :value="user.role"
-            class="field-select field-select--small"
-            @change="changeRole(user.id, ($event.target as HTMLSelectElement).value)"
+          <div
+            v-if="confirmingRoleChange && confirmingRoleChange.userId === user.id"
+            class="confirm-group"
           >
-            <option value="user">User</option>
-            <option value="admin">Admin</option>
-          </select>
+            <span class="confirm-text">
+              Change to {{ confirmingRoleChange.role }}?
+            </span>
+            <button
+              class="btn btn--primary btn--small"
+              @click="confirmRoleChange"
+            >
+              Confirm
+            </button>
+            <button
+              class="btn btn--small"
+              @click="cancelRoleChange"
+            >
+              Cancel
+            </button>
+          </div>
+          <div v-else>
+            <label
+              :for="`role-${user.id}`"
+              class="sr-only"
+            >Role for {{ user.username }}</label>
+            <select
+              :id="`role-${user.id}`"
+              :value="user.role"
+              class="field-select field-select--small"
+              @change="requestRoleChange(user.id, ($event.target as HTMLSelectElement).value)"
+            >
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
         </div>
       </div>
     </div>
@@ -443,6 +742,14 @@ onMounted(async () => {
   margin-bottom: 0.25rem;
 }
 
+.field-help {
+  display: block;
+  font-size: 0.6875rem;
+  color: var(--pq-muted);
+  margin-top: 0.125rem;
+  opacity: 0.8;
+}
+
 .field-input,
 .field-textarea,
 .field-select {
@@ -463,8 +770,15 @@ onMounted(async () => {
 .field-input:focus,
 .field-textarea:focus,
 .field-select:focus {
-  outline: none;
   border-color: var(--pq-accent);
+  outline: none;
+}
+
+.field-input:focus-visible,
+.field-textarea:focus-visible,
+.field-select:focus-visible {
+  outline: 2px solid var(--pq-accent);
+  outline-offset: 1px;
 }
 
 .field-row {
@@ -482,6 +796,14 @@ onMounted(async () => {
 .field-actions {
   display: flex;
   gap: 0.5rem;
+  align-items: flex-end;
+}
+
+.synthesize-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.125rem;
 }
 
 .btn {
@@ -509,6 +831,11 @@ onMounted(async () => {
   border-color: var(--pq-danger);
 }
 
+.btn--small {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+}
+
 .btn:disabled {
   opacity: 0.5;
   cursor: default;
@@ -522,8 +849,12 @@ onMounted(async () => {
 }
 
 .key-create .field-input,
-.user-create .field-input {
+.user-create-field {
   flex: 1;
+}
+
+.user-create-field .field-input {
+  width: 100%;
 }
 
 .user-create .field-select {
@@ -543,11 +874,18 @@ onMounted(async () => {
   margin: 0 0 0.25rem;
 }
 
+.key-created-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .key-created-value {
   font-family: var(--pq-font-mono);
   font-size: 0.8125rem;
   color: var(--pq-text);
   word-break: break-all;
+  flex: 1;
 }
 
 .key-row,
@@ -588,5 +926,41 @@ onMounted(async () => {
   font-size: 0.8125rem;
   color: var(--pq-muted);
   padding: 1rem 0;
+}
+
+.config-group {
+  margin-bottom: 1.5rem;
+}
+
+.config-group-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--pq-text);
+  margin: 0 0 0.5rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--pq-border);
+}
+
+.confirm-group {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.confirm-text {
+  font-size: 0.75rem;
+  color: var(--pq-muted);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 </style>

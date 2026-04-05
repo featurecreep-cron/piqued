@@ -14,9 +14,11 @@ const toast = useToast()
 
 const feed = ref<FeedDetail | null>(null)
 const loading = ref(false)
+const error = ref<string | null>(null)
 
 async function loadFeed() {
   loading.value = true
+  error.value = null
   try {
     feed.value = await api.get<FeedDetail>(`/feeds/${route.params.id}`)
   } catch (err) {
@@ -24,7 +26,7 @@ async function loadFeed() {
       toast.error('Feed not found')
       router.push('/feeds')
     } else {
-      toast.error(err instanceof ApiError ? err.detail : 'Failed to load feed')
+      error.value = err instanceof ApiError ? err.detail : 'Failed to load feed'
     }
   } finally {
     loading.value = false
@@ -63,6 +65,20 @@ onMounted(loadFeed)
       v-if="loading"
       message="Loading feed..."
     />
+
+    <div
+      v-else-if="error"
+      class="error-state"
+      role="alert"
+    >
+      <p class="error-message">{{ error }}</p>
+      <button
+        class="back-btn"
+        @click="loadFeed"
+      >
+        Retry
+      </button>
+    </div>
 
     <template v-else-if="feed">
       <div class="feed-header">
@@ -199,5 +215,20 @@ onMounted(loadFeed)
 
 .article-sections {
   color: var(--pq-muted);
+}
+
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 2rem 1rem;
+  text-align: center;
+}
+
+.error-message {
+  font-size: 0.875rem;
+  color: var(--pq-danger);
+  margin: 0;
 }
 </style>

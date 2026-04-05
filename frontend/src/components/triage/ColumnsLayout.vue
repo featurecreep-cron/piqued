@@ -118,11 +118,9 @@ async function handleClickThrough(sectionId: number) {
           <button @click="configVisible = true">Add columns</button>
         </div>
       </div>
-      <div
-        v-if="selectedSection"
-        class="columns-detail"
-      >
+      <div class="columns-detail">
         <ArticleDetail
+          v-if="selectedSection"
           :section="selectedSection"
           :threshold="content.threshold"
           :is-surprise="content.surpriseSectionIds.includes(selectedSection.id)"
@@ -130,6 +128,12 @@ async function handleClickThrough(sectionId: number) {
           @downweight="handleDownweight"
           @click-through="handleClickThrough"
         />
+        <div
+          v-else
+          class="columns-placeholder"
+        >
+          <p>Select a section to read</p>
+        </div>
       </div>
     </div>
     <ColumnConfig
@@ -189,6 +193,15 @@ async function handleClickThrough(sectionId: number) {
   flex-shrink: 0;
   border-left: 1px solid var(--pq-border);
   overflow: hidden;
+}
+
+.columns-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--pq-muted);
+  font-size: 0.875rem;
 }
 
 .columns-empty {
