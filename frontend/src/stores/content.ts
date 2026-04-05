@@ -27,7 +27,15 @@ export const useContentStore = defineStore('content', () => {
     sections.value.filter((s) => surpriseSectionIds.value.includes(s.id) && s.score < threshold.value),
   )
 
-  const focusedSection = computed(() => sections.value[focusedIndex.value] ?? null)
+  // Display order: above → surprise → below (matches river visual order).
+  // Reader/columns filter from this list; focus traversal follows this order.
+  const displayOrder = computed(() => [
+    ...aboveSections.value,
+    ...surpriseSections.value,
+    ...belowSections.value,
+  ])
+
+  const focusedSection = computed(() => displayOrder.value[focusedIndex.value] ?? null)
 
   async function loadSections(targetDate?: string) {
     loading.value = true
@@ -54,7 +62,7 @@ export const useContentStore = defineStore('content', () => {
   }
 
   function focusNext() {
-    if (focusedIndex.value < sections.value.length - 1) {
+    if (focusedIndex.value < displayOrder.value.length - 1) {
       focusedIndex.value++
     }
   }
@@ -66,9 +74,14 @@ export const useContentStore = defineStore('content', () => {
   }
 
   function focusByIndex(index: number) {
-    if (index >= 0 && index < sections.value.length) {
+    if (index >= 0 && index < displayOrder.value.length) {
       focusedIndex.value = index
     }
+  }
+
+  function focusBySectionId(sectionId: number) {
+    const idx = displayOrder.value.findIndex((s) => s.id === sectionId)
+    if (idx !== -1) focusedIndex.value = idx
   }
 
   function $reset() {
@@ -94,11 +107,13 @@ export const useContentStore = defineStore('content', () => {
     aboveSections,
     belowSections,
     surpriseSections,
+    displayOrder,
     focusedSection,
     loadSections,
     focusNext,
     focusPrev,
     focusByIndex,
+    focusBySectionId,
     $reset,
   }
 })

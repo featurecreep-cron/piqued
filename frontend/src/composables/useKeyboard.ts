@@ -73,6 +73,16 @@ export function useKeyboard() {
         content.focusPrev()
         scrollFocusedIntoView()
         break
+      case 'Enter': {
+        e.preventDefault()
+        const section = content.focusedSection
+        if (section) {
+          // In reader/columns, select the focused section into the detail pane
+          // by dispatching a custom event that layouts can listen for
+          window.dispatchEvent(new CustomEvent('piqued:select-focused', { detail: { sectionId: section.id } }))
+        }
+        break
+      }
       case 'u': {
         e.preventDefault()
         const section = content.focusedSection
@@ -99,7 +109,7 @@ export function useKeyboard() {
 
   function scrollFocusedIntoView() {
     requestAnimationFrame(() => {
-      const el = document.querySelector('.section-card.focused')
+      const el = document.querySelector('.section-card.focused, .compact-card.focused')
       el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
     })
   }

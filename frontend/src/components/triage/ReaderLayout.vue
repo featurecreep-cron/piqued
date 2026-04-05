@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useContentStore } from '@/stores/content'
 import { useFeedback } from '@/composables/useFeedback'
 import type { SectionItem } from '@/types/api'
@@ -80,6 +80,14 @@ async function handleDownweight(tag: string) {
 async function handleClickThrough(sectionId: number) {
   await feedback.clickThrough(sectionId)
 }
+
+function onSelectFocused(e: Event) {
+  const sectionId = (e as CustomEvent).detail?.sectionId
+  if (sectionId) handleSelect(sectionId)
+}
+
+onMounted(() => window.addEventListener('piqued:select-focused', onSelectFocused))
+onUnmounted(() => window.removeEventListener('piqued:select-focused', onSelectFocused))
 </script>
 
 <template>
