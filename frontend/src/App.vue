@@ -58,7 +58,13 @@ const auth = useAuthStore()
       id="main-content"
       class="app-main"
     >
-      <RouterView />
+      <div
+        v-if="auth.loading"
+        class="app-loading"
+      >
+        <span class="app-loading-text">Loading...</span>
+      </div>
+      <RouterView v-else />
     </main>
     <ToastContainer />
     <KeyboardHelp
@@ -143,5 +149,17 @@ const auth = useAuthStore()
 .app-main {
   flex: 1;
   padding: 1.5rem;
+}
+
+.app-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 50vh;
+}
+
+.app-loading-text {
+  font-size: 0.875rem;
+  color: var(--pq-muted);
 }
 </style>

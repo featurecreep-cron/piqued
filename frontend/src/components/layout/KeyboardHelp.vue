@@ -1,7 +1,13 @@
 <script setup lang="ts">
-defineEmits<{
+import { ref } from 'vue'
+import { useFocusTrap } from '@/composables/useFocusTrap'
+
+const emit = defineEmits<{
   close: []
 }>()
+
+const panelRef = ref<HTMLElement | null>(null)
+useFocusTrap(panelRef, () => emit('close'))
 
 const globalShortcuts = [
   { key: '?', description: 'Toggle this help' },
@@ -10,8 +16,9 @@ const globalShortcuts = [
   { key: 'Escape', description: 'Close overlay / go back' },
 ]
 
-const riverShortcuts = [
+const triageShortcuts = [
   { key: 'j / k', description: 'Next / previous section' },
+  { key: 'Enter', description: 'Select focused section (reader/columns)' },
   { key: 'u / d', description: 'Upvote / downvote focused section' },
   { key: 'o', description: 'Open article in new tab' },
 ]
@@ -25,6 +32,7 @@ const riverShortcuts = [
       @click="$emit('close')"
     >
       <div
+        ref="panelRef"
         class="help-panel"
         role="dialog"
         aria-modal="true"
@@ -58,11 +66,11 @@ const riverShortcuts = [
             </tr>
           </tbody>
         </table>
-        <h3 class="help-section-title">Triage (River mode)</h3>
+        <h3 class="help-section-title">Triage</h3>
         <table class="help-table">
           <tbody>
             <tr
-              v-for="s in riverShortcuts"
+              v-for="s in triageShortcuts"
               :key="s.key"
             >
               <td class="help-key">

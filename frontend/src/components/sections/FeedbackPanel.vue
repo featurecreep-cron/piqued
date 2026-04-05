@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed } from 'vue'
+import { useFeedback } from '@/composables/useFeedback'
 
-defineProps<{
+const props = defineProps<{
   sectionId: number
 }>()
 
@@ -9,10 +10,11 @@ const emit = defineEmits<{
   vote: [rating: 1 | -1]
 }>()
 
-const voted = ref<1 | -1 | null>(null)
+const feedback = useFeedback()
+
+const voted = computed(() => feedback.getVote(props.sectionId))
 
 function handleVote(rating: 1 | -1) {
-  voted.value = rating
   emit('vote', rating)
 }
 </script>
@@ -22,6 +24,7 @@ function handleVote(rating: 1 | -1) {
     <button
       class="vote-btn vote-up"
       :class="{ active: voted === 1 }"
+      :aria-pressed="voted === 1"
       aria-label="Upvote"
       @click="handleVote(1)"
     >
@@ -30,6 +33,7 @@ function handleVote(rating: 1 | -1) {
     <button
       class="vote-btn vote-down"
       :class="{ active: voted === -1 }"
+      :aria-pressed="voted === -1"
       aria-label="Downvote"
       @click="handleVote(-1)"
     >

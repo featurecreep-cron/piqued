@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { useContentStore } from '@/stores/content'
+import { useFocusTrap } from '@/composables/useFocusTrap'
 
 export interface ColumnDef {
   type: 'tier' | 'tag' | 'feed'
@@ -18,6 +19,8 @@ const emit = defineEmits<{
   close: []
 }>()
 
+const panelRef = ref<HTMLElement | null>(null)
+useFocusTrap(panelRef, () => emit('close'))
 const content = useContentStore()
 
 const availableTags = computed(() => {
@@ -55,6 +58,7 @@ const availableTiers = computed(() => {
       @click="emit('close')"
     >
       <div
+        ref="panelRef"
         class="config-panel"
         role="dialog"
         aria-modal="true"
