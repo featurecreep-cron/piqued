@@ -53,7 +53,9 @@ router.beforeEach(async () => {
     syncTheme()
     syncLayout()
   } catch {
-    // Network error — let the page load, it'll show an error state
+    // Network error or server down — redirect to login as a safe default
+    auth.redirectToLogin()
+    return false
   }
 })
 

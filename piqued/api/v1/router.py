@@ -44,7 +44,7 @@ from piqued.api.v1.schemas import (
     WeightItem,
 )
 from piqued.db import get_session
-from piqued.models import ApiKey, Feed, User, UserProfile
+from piqued.models import ApiKey, Article, Feed, User, UserProfile
 from piqued.web.data import (
     get_article_detail,
     get_feed_detail,
@@ -118,13 +118,20 @@ async def list_feeds(
     user: User = Depends(get_api_user),
     session: AsyncSession = Depends(get_session),
 ):
+    # Get article counts per feed via a single query (avoids lazy-load in async)
+    from sqlalchemy import func
+
+    count_result = await session.execute(
+        select(Article.feed_id, func.count()).group_by(Article.feed_id)
+    )
+    article_counts = dict(count_result.all())
+
     data = await get_feeds_list(session)
     feeds = []
     categories: dict[str, list[int]] = {}
     for cat, cat_feeds in data["categories"].items():
         categories[cat] = []
         for feed in cat_feeds:
-            article_count = len(feed.articles) if hasattr(feed, "articles") else 0
             feeds.append(
                 FeedItem(
                     id=feed.id,
@@ -133,7 +140,7 @@ async def list_feeds(
                     category=feed.category,
                     active=feed.active,
                     content_quality=feed.content_quality,
-                    article_count=article_count,
+                    article_count=article_counts.get(feed.id, 0),
                 )
             )
             categories[cat].append(feed.id)
