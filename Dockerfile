@@ -19,8 +19,8 @@ RUN groupadd -g 1000 piqued && useradd -u 1000 -g 1000 -d /app piqued
 WORKDIR /app
 
 COPY --from=backend /install /usr/local
-COPY --from=frontend /build/dist /app/piqued/web/spa/
 COPY . .
+COPY --from=frontend /build/dist /app/piqued/web/spa/
 
 RUN mkdir -p /data && chown -R piqued:piqued /app /data
 
