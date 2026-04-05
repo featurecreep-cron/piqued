@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import type { FeedList, FeedItem, SyncResult } from '@/types/api'
 import FeedCard from '@/components/feeds/FeedCard.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
 
 const api = useApi()
 const toast = useToast()
@@ -89,6 +90,11 @@ onMounted(loadFeeds)
     <LoadingSpinner
       v-if="loading"
       message="Loading feeds..."
+    />
+
+    <EmptyState
+      v-else-if="!feeds.length"
+      message="No feeds configured. Use Sync to import from FreshRSS."
     />
 
     <div

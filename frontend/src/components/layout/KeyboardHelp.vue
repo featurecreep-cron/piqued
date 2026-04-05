@@ -21,14 +21,21 @@ const riverShortcuts = [
   <Teleport to="body">
     <div
       class="help-backdrop"
+      role="presentation"
       @click="$emit('close')"
     >
       <div
         class="help-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="keyboard-help-title"
         @click.stop
       >
         <div class="help-header">
-          <h2 class="help-title">Keyboard shortcuts</h2>
+          <h2
+            id="keyboard-help-title"
+            class="help-title"
+          >Keyboard shortcuts</h2>
           <button
             class="help-close"
             aria-label="Close"

@@ -57,6 +57,9 @@ function handleKeydown(e: KeyboardEvent) {
     >
       <div
         class="palette-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
         @click.stop
         @keydown="handleKeydown"
       >
@@ -66,14 +69,26 @@ function handleKeydown(e: KeyboardEvent) {
           class="palette-input"
           type="text"
           placeholder="Type a command..."
-          aria-label="Command palette"
+          aria-label="Search commands"
+          role="combobox"
+          aria-expanded="true"
+          aria-controls="palette-listbox"
+          aria-autocomplete="list"
+          :aria-activedescendant="palette.filtered.value.length ? `palette-item-${selectedIndex}` : undefined"
         >
-        <div class="palette-results">
+        <div
+          id="palette-listbox"
+          class="palette-results"
+          role="listbox"
+        >
           <div
             v-for="(cmd, idx) in palette.filtered.value"
+            :id="`palette-item-${idx}`"
             :key="cmd.id"
             class="palette-item"
             :class="{ selected: idx === selectedIndex }"
+            role="option"
+            :aria-selected="idx === selectedIndex"
             @click="palette.execute(cmd)"
             @mouseenter="selectedIndex = idx"
           >

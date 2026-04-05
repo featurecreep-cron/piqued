@@ -35,7 +35,7 @@ function handleDateSelect(date: string) {
           <button
             class="layout-btn"
             :class="{ active: layout.isRiver.value }"
-            aria-label="River layout"
+            :aria-pressed="layout.isRiver.value"
             @click="layout.setMode('river')"
           >
             River
@@ -43,7 +43,7 @@ function handleDateSelect(date: string) {
           <button
             class="layout-btn"
             :class="{ active: layout.isReader.value }"
-            aria-label="Reader layout"
+            :aria-pressed="layout.isReader.value"
             @click="layout.setMode('reader')"
           >
             Reader
@@ -51,7 +51,7 @@ function handleDateSelect(date: string) {
           <button
             class="layout-btn"
             :class="{ active: layout.isColumns.value }"
-            aria-label="Columns layout"
+            :aria-pressed="layout.isColumns.value"
             @click="layout.setMode('columns')"
           >
             Columns
@@ -74,6 +74,7 @@ function handleDateSelect(date: string) {
     <div
       v-else-if="content.error"
       class="triage-error"
+      role="alert"
     >
       <p>{{ content.error }}</p>
       <button @click="content.loadSections()">Retry</button>

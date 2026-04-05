@@ -68,6 +68,7 @@ onMounted(loadFeed)
       <div class="feed-header">
         <button
           class="back-btn"
+          aria-label="Back to feeds"
           @click="router.push('/feeds')"
         >
           &larr; Feeds

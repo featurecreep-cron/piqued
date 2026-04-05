@@ -84,6 +84,7 @@ onMounted(loadArticle)
       <div class="article-header">
         <button
           class="back-btn"
+          aria-label="Back to triage"
           @click="router.push('/')"
         >
           &larr; Triage

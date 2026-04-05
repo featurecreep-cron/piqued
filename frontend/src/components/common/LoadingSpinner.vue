@@ -5,8 +5,15 @@ defineProps<{
 </script>
 
 <template>
-  <div class="loading">
-    <div class="spinner" />
+  <div
+    class="loading"
+    role="status"
+    aria-live="polite"
+  >
+    <div
+      class="spinner"
+      aria-hidden="true"
+    />
     <p
       v-if="message"
       class="loading-message"

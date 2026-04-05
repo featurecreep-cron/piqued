@@ -5,7 +5,10 @@ defineProps<{
 </script>
 
 <template>
-  <div class="empty-state">
+  <div
+    class="empty-state"
+    role="status"
+  >
     <p class="empty-message">{{ message }}</p>
   </div>
 </template>

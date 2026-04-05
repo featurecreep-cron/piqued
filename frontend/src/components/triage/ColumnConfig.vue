@@ -51,14 +51,21 @@ const availableTiers = computed(() => {
   <Teleport to="body">
     <div
       class="config-backdrop"
+      role="presentation"
       @click="emit('close')"
     >
       <div
         class="config-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="column-config-title"
         @click.stop
       >
         <div class="config-header">
-          <h3 class="config-title">Configure columns</h3>
+          <h3
+            id="column-config-title"
+            class="config-title"
+          >Configure columns</h3>
           <button
             class="config-close"
             aria-label="Close"
@@ -78,6 +85,7 @@ const availableTiers = computed(() => {
             <span class="config-label">{{ col.label }}</span>
             <button
               class="config-remove"
+              :aria-label="`Remove ${col.label} column`"
               @click="emit('remove', idx)"
             >
               &times;
