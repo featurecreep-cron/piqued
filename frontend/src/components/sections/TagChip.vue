@@ -1,20 +1,25 @@
 <script setup lang="ts">
-defineProps<{
+import { computed } from 'vue'
+import { humanizeTag } from '@/utils/tags'
+
+const props = defineProps<{
   tag: string
 }>()
 
 defineEmits<{
   downweight: [tag: string]
 }>()
+
+const label = computed(() => humanizeTag(props.tag))
 </script>
 
 <template>
   <span class="tag-chip">
-    <span class="tag-label">{{ tag }}</span>
+    <span class="tag-label">{{ label }}</span>
     <button
       class="tag-downweight"
-      :aria-label="`Downweight ${tag}`"
-      :title="`Downweight ${tag}`"
+      :aria-label="`Downweight ${label}`"
+      :title="`Downweight ${label}`"
       @click.stop="$emit('downweight', tag)"
     >
       &darr;

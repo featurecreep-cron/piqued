@@ -70,6 +70,8 @@ const sectionCount = computed(() => `${props.sections.length}`)
   align-items: flex-start;
   gap: 0.375rem;
   padding: 0.5rem 0.75rem;
+  background: var(--pq-card-bg);
+  border-bottom: 1px solid var(--pq-border);
 }
 
 .group-header.collapsible {
@@ -77,7 +79,16 @@ const sectionCount = computed(() => `${props.sections.length}`)
 }
 
 .group-header.collapsible:hover {
-  background: var(--pq-card-bg);
+  background: color-mix(in srgb, var(--pq-accent) 6%, var(--pq-card-bg));
+}
+
+.group-sections {
+  /* Indent sections under their parent article header so the
+     parent/child relationship is visually obvious. The left rail
+     gives a vertical anchor running the height of the group. */
+  padding-left: 1.25rem;
+  border-left: 2px solid var(--pq-border);
+  margin-left: 0.625rem;
 }
 
 .group-caret {

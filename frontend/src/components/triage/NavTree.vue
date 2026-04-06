@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useContentStore } from '@/stores/content'
+import { humanizeTag } from '@/utils/tags'
 
 const content = useContentStore()
 
@@ -11,6 +12,11 @@ const emit = defineEmits<{
 const props = defineProps<{
   activeFilter: { type: string; value: string }
 }>()
+
+// Feeds and Topics are long lists. Default Topics collapsed; default Feeds
+// expanded since the new reading flow starts at "pick a feed".
+const feedsCollapsed = ref(false)
+const topicsCollapsed = ref(true)
 
 const allTags = computed(() => {
   const tags = new Set<string>()
@@ -74,36 +80,56 @@ function isActive(type: string, value: string): boolean {
     </div>
 
     <div
-      v-if="allTags.length"
-      class="nav-group"
-    >
-      <h4 class="nav-group-title">Topics</h4>
-      <button
-        v-for="tag in allTags"
-        :key="tag"
-        class="nav-item"
-        :class="{ active: isActive('tag', tag) }"
-        @click="emit('filter', 'tag', tag)"
-      >
-        {{ tag }}
-      </button>
-    </div>
-
-    <div
       v-if="allFeeds.length"
       class="nav-group"
     >
-      <h4 class="nav-group-title">Feeds</h4>
       <button
-        v-for="[feed, count] in allFeeds"
-        :key="feed"
-        class="nav-item"
-        :class="{ active: isActive('feed', feed) }"
-        @click="emit('filter', 'feed', feed)"
+        class="nav-group-toggle"
+        :aria-expanded="!feedsCollapsed"
+        @click="feedsCollapsed = !feedsCollapsed"
       >
-        {{ feed }}
-        <span class="nav-count">{{ count }}</span>
+        <span class="nav-group-caret">{{ feedsCollapsed ? '&#9656;' : '&#9662;' }}</span>
+        <span class="nav-group-title">Feeds</span>
+        <span class="nav-group-count">{{ allFeeds.length }}</span>
       </button>
+      <div v-if="!feedsCollapsed">
+        <button
+          v-for="[feed, count] in allFeeds"
+          :key="feed"
+          class="nav-item"
+          :class="{ active: isActive('feed', feed) }"
+          @click="emit('filter', 'feed', feed)"
+        >
+          <span class="nav-item-label">{{ feed }}</span>
+          <span class="nav-count">{{ count }}</span>
+        </button>
+      </div>
+    </div>
+
+    <div
+      v-if="allTags.length"
+      class="nav-group"
+    >
+      <button
+        class="nav-group-toggle"
+        :aria-expanded="!topicsCollapsed"
+        @click="topicsCollapsed = !topicsCollapsed"
+      >
+        <span class="nav-group-caret">{{ topicsCollapsed ? '&#9656;' : '&#9662;' }}</span>
+        <span class="nav-group-title">Topics</span>
+        <span class="nav-group-count">{{ allTags.length }}</span>
+      </button>
+      <div v-if="!topicsCollapsed">
+        <button
+          v-for="tag in allTags"
+          :key="tag"
+          class="nav-item"
+          :class="{ active: isActive('tag', tag) }"
+          @click="emit('filter', 'tag', tag)"
+        >
+          <span class="nav-item-label">{{ humanizeTag(tag) }}</span>
+        </button>
+      </div>
     </div>
   </nav>
 </template>
@@ -125,8 +151,44 @@ function isActive(type: string, value: string): boolean {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--pq-muted);
-  padding: 0.25rem 0.75rem;
+  padding: 0.25rem 0;
   margin: 0;
+  flex: 1;
+  text-align: left;
+}
+
+.nav-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  width: 100%;
+  padding: 0.25rem 0.75rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--pq-muted);
+}
+
+.nav-group-toggle:hover .nav-group-title {
+  color: var(--pq-text);
+}
+
+.nav-group-caret {
+  font-size: 0.6875rem;
+  width: 0.625rem;
+  flex-shrink: 0;
+}
+
+.nav-group-count {
+  font-size: 0.6875rem;
+  color: var(--pq-muted);
+}
+
+.nav-item-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .nav-item {

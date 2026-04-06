@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import { useContentStore } from '@/stores/content'
 import { useFocusTrap } from '@/composables/useFocusTrap'
+import { humanizeTag } from '@/utils/tags'
 
 export interface ColumnDef {
   type: 'tier' | 'tag' | 'feed'
@@ -129,9 +130,9 @@ const availableTiers = computed(() => {
             v-for="tag in availableTags"
             :key="tag"
             class="config-add-btn"
-            @click="emit('add', { type: 'tag', value: tag, label: tag })"
+            @click="emit('add', { type: 'tag', value: tag, label: humanizeTag(tag) })"
           >
-            + {{ tag }}
+            + {{ humanizeTag(tag) }}
           </button>
         </div>
 
