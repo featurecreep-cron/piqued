@@ -1,17 +1,10 @@
 import { test, expect } from '@playwright/test'
-
-// Helper: login and navigate to triage
-async function login(page: import('@playwright/test').Page) {
-  await page.goto('/login')
-  await page.fill('input[name="username"]', 'testuser')
-  await page.fill('input[name="password"]', 'testpass')
-  await page.click('button[type="submit"]')
-  await expect(page).toHaveURL('/')
-}
+import { loginAsAdmin, waitForSections, reseedDatabase } from './helpers'
 
 test.describe('Triage View', () => {
+  test.beforeAll(() => reseedDatabase())
   test.beforeEach(async ({ page }) => {
-    await login(page)
+    await loginAsAdmin(page)
   })
 
   test('shows triage header with layout toggle', async ({ page }) => {
@@ -20,6 +13,8 @@ test.describe('Triage View', () => {
   })
 
   test('layout toggle switches between modes', async ({ page }) => {
+    await waitForSections(page)
+
     // Default is river
     const riverBtn = page.locator('.layout-btn', { hasText: 'River' })
     await expect(riverBtn).toHaveAttribute('aria-pressed', 'true')
@@ -36,9 +31,14 @@ test.describe('Triage View', () => {
     await expect(columnsBtn).toHaveAttribute('aria-pressed', 'true')
   })
 
-  test('empty state when no sections', async ({ page }) => {
-    // Test DB has feeds but no articles/sections
-    await expect(page.locator('.empty-state')).toBeVisible()
-    await expect(page.locator('.empty-message')).toContainText('No sections')
+  test('sections load and display in river mode', async ({ page }) => {
+    // Ensure river mode (previous test may have switched layout)
+    const riverBtn = page.locator('.layout-btn', { hasText: 'River' })
+    await riverBtn.click()
+    await waitForSections(page)
+    // Should have section cards (not empty state)
+    const cards = page.locator('.section-card')
+    const count = await cards.count()
+    expect(count).toBeGreaterThan(0)
   })
 })

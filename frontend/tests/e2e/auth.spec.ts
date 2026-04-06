@@ -28,4 +28,14 @@ test.describe('Authentication', () => {
     // Should stay on login page
     await expect(page).toHaveURL(/\/login/)
   })
+
+  test('regular user can log in', async ({ page }) => {
+    await page.goto('/login')
+    await page.fill('input[name="username"]', 'reader')
+    await page.fill('input[name="password"]', 'userpass')
+    await page.click('button[type="submit"]')
+
+    await expect(page).toHaveURL('/')
+    await expect(page.locator('.toolbar-user')).toContainText('reader')
+  })
 })

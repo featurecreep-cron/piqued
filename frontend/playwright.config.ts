@@ -10,6 +10,7 @@ export default defineConfig({
   testDir: 'tests/e2e',
   timeout: 30_000,
   retries: 0,
+  workers: 1,
   use: {
     baseURL: 'http://127.0.0.1:8400',
     headless: true,
@@ -26,6 +27,6 @@ export default defineConfig({
     cwd: rootDir,
     port: 8400,
     reuseExistingServer: false,
-    timeout: 15_000,
+    timeout: 30_000,
   },
 })

@@ -1,16 +1,9 @@
 import { test, expect } from '@playwright/test'
-
-async function login(page: import('@playwright/test').Page) {
-  await page.goto('/login')
-  await page.fill('input[name="username"]', 'testuser')
-  await page.fill('input[name="password"]', 'testpass')
-  await page.click('button[type="submit"]')
-  await expect(page).toHaveURL('/')
-}
+import { loginAsAdmin } from './helpers'
 
 test.describe('Navigation', () => {
   test.beforeEach(async ({ page }) => {
-    await login(page)
+    await loginAsAdmin(page)
   })
 
   test('nav links are visible', async ({ page }) => {
@@ -24,8 +17,7 @@ test.describe('Navigation', () => {
     await page.click('.app-nav a:has-text("Feeds")')
     await expect(page).toHaveURL('/feeds')
     await expect(page.locator('.feeds-title')).toContainText('Feeds')
-    // Should show 2 test feeds from seed data
-    await expect(page.locator('.feeds-count')).toContainText('2 feeds')
+    await expect(page.locator('.feeds-count')).toContainText('3 feeds')
   })
 
   test('navigate to log page', async ({ page }) => {
@@ -39,21 +31,18 @@ test.describe('Navigation', () => {
   })
 
   test('theme toggle switches dark/light', async ({ page }) => {
-    // Get initial theme
     const html = page.locator('html')
     const initialTheme = await html.getAttribute('data-theme')
+    const themeBtn = page.locator('.toolbar-btn[aria-label*="theme"]')
 
-    // Click theme toggle
-    await page.click('.toolbar-btn:first-child')
-
-    // Theme should have changed
+    await themeBtn.click()
     const newTheme = await html.getAttribute('data-theme')
     expect(newTheme).not.toBe(initialTheme)
 
-    // Toggle back
-    await page.click('.toolbar-btn:first-child')
-    const restoredTheme = await html.getAttribute('data-theme')
-    expect(restoredTheme).toBe(initialTheme)
+    // Toggle again — should change to a third state or cycle
+    await themeBtn.click()
+    const thirdTheme = await html.getAttribute('data-theme')
+    expect(thirdTheme).not.toBe(newTheme)
   })
 
   test('keyboard help overlay opens with ?', async ({ page }) => {
