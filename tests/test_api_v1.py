@@ -257,6 +257,196 @@ class TestApiFeeds:
             assert r.status_code == 200
             assert r.json()["feeds"] == []
 
+    @pytest.mark.asyncio
+    async def test_feeds_unread_and_untriaged_counts(self, transport):
+        """Per-user counts: unread = no feedback at all, untriaged = no
+        explicit vote. A click_through counts as 'seen' (so no longer unread)
+        but does NOT count as 'triaged'.
+        """
+        from piqued.db import async_session
+        from piqued.models import (
+            Article,
+            ArticleStatus,
+            Feed,
+            Feedback,
+            FeedbackSource,
+            Section,
+        )
+
+        user, token = await _create_user()
+
+        async with async_session() as session:
+            feed = Feed(
+                freshrss_feed_id="acme-feed-1",
+                title="Acme",
+                url="https://acme.example/feed",
+                category="news",
+                active=True,
+                content_quality="full",
+            )
+            session.add(feed)
+            await session.flush()
+
+            # Five complete articles + one pending article (pending must be
+            # excluded from both counts).
+            articles = []
+            for i in range(5):
+                a = Article(
+                    feed_id=feed.id,
+                    freshrss_item_id=f"acme-{i}",
+                    title=f"Article {i}",
+                    url=f"https://acme.example/{i}",
+                    digest_date="2026-04-06",
+                    status=ArticleStatus.complete,
+                )
+                articles.append(a)
+                session.add(a)
+            pending = Article(
+                feed_id=feed.id,
+                freshrss_item_id="acme-pending",
+                title="Pending",
+                url="https://acme.example/pending",
+                digest_date="2026-04-06",
+                status=ArticleStatus.pending,
+            )
+            session.add(pending)
+            await session.flush()
+
+            # Each article gets one section
+            sections = []
+            for a in articles:
+                s = Section(
+                    article_id=a.id,
+                    section_index=0,
+                    heading=f"section for {a.title}",
+                    summary="x",
+                )
+                sections.append(s)
+                session.add(s)
+            await session.flush()
+
+            # Article 0: explicit thumbs up → both seen and triaged
+            session.add(
+                Feedback(
+                    user_id=user.id,
+                    section_id=sections[0].id,
+                    rating=1,
+                    source=FeedbackSource.explicit,
+                )
+            )
+            # Article 1: click_through only → seen but not triaged
+            session.add(
+                Feedback(
+                    user_id=user.id,
+                    section_id=sections[1].id,
+                    rating=1,
+                    source=FeedbackSource.click_through,
+                )
+            )
+            # Article 2: explicit thumbs down → both seen and triaged
+            session.add(
+                Feedback(
+                    user_id=user.id,
+                    section_id=sections[2].id,
+                    rating=-1,
+                    source=FeedbackSource.explicit,
+                )
+            )
+            # Articles 3 and 4: untouched → unread AND untriaged
+            await session.commit()
+
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            r = await client.get(
+                "/api/v1/feeds",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert r.status_code == 200
+            data = r.json()
+            assert len(data["feeds"]) == 1
+            f = data["feeds"][0]
+            # 5 complete + 1 pending = 6 total
+            assert f["article_count"] == 6
+            # Unread = articles 3,4 (no feedback at all). Article 1 (click only)
+            # counts as seen.
+            assert f["unread_count"] == 2
+            # Untriaged = articles 1,3,4 (no explicit vote). Articles 0 and 2
+            # have explicit votes.
+            assert f["untriaged_count"] == 3
+
+    @pytest.mark.asyncio
+    async def test_feeds_counts_are_per_user(self, transport):
+        """User A's votes don't affect User B's unread/untriaged counts."""
+        from piqued.db import async_session
+        from piqued.models import (
+            Article,
+            ArticleStatus,
+            Feed,
+            Feedback,
+            FeedbackSource,
+            Section,
+        )
+
+        user_a, token_a = await _create_user()
+        user_b, token_b = await _create_user()
+
+        async with async_session() as session:
+            feed = Feed(
+                freshrss_feed_id="shared-feed-1",
+                title="Shared",
+                url="https://shared.example/feed",
+                category="news",
+                active=True,
+                content_quality="full",
+            )
+            session.add(feed)
+            await session.flush()
+            article = Article(
+                feed_id=feed.id,
+                freshrss_item_id="shared-1",
+                title="Shared 1",
+                url="https://shared.example/1",
+                digest_date="2026-04-06",
+                status=ArticleStatus.complete,
+            )
+            session.add(article)
+            await session.flush()
+            section = Section(
+                article_id=article.id,
+                section_index=0,
+                heading="x",
+                summary="x",
+            )
+            session.add(section)
+            await session.flush()
+            # User A votes; user B does not
+            session.add(
+                Feedback(
+                    user_id=user_a.id,
+                    section_id=section.id,
+                    rating=1,
+                    source=FeedbackSource.explicit,
+                )
+            )
+            await session.commit()
+
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            ra = await client.get(
+                "/api/v1/feeds",
+                headers={"Authorization": f"Bearer {token_a}"},
+            )
+            rb = await client.get(
+                "/api/v1/feeds",
+                headers={"Authorization": f"Bearer {token_b}"},
+            )
+            fa = ra.json()["feeds"][0]
+            fb = rb.json()["feeds"][0]
+            # A has triaged the only article
+            assert fa["unread_count"] == 0
+            assert fa["untriaged_count"] == 0
+            # B has not — same article shows as unread + untriaged for B
+            assert fb["unread_count"] == 1
+            assert fb["untriaged_count"] == 1
+
 
 class TestApiSettings:
     @pytest.mark.asyncio

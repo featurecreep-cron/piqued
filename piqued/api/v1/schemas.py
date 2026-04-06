@@ -45,6 +45,13 @@ class FeedItem(BaseModel):
     active: bool
     content_quality: str
     article_count: int
+    # Articles whose sections have NO feedback rows from this user yet
+    # (never click-throughed, never voted on). Defaults to 0 in contexts
+    # where the user identity is unknown.
+    unread_count: int = 0
+    # Articles whose sections have no `explicit` feedback rows from this
+    # user (may have click-throughed but never thumbs up/down).
+    untriaged_count: int = 0
 
 
 class FeedList(BaseModel):

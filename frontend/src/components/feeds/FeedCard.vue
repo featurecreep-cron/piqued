@@ -1,10 +1,14 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { FeedItem } from '@/types/api'
 
-defineProps<{
+const props = defineProps<{
   feed: FeedItem
   isAdmin: boolean
 }>()
+
+const unreadCount = computed(() => props.feed.unread_count ?? 0)
+const untriagedCount = computed(() => props.feed.untriaged_count ?? 0)
 
 const emit = defineEmits<{
   toggle: [feedId: number]
@@ -37,7 +41,17 @@ function qualityColor(quality: string): string {
       <h3 class="feed-title">{{ feed.title }}</h3>
       <div class="feed-meta">
         <span class="feed-category">{{ feed.category }}</span>
-        <span class="feed-articles">{{ feed.article_count }} articles</span>
+        <span
+          class="feed-count"
+          :class="{ 'has-unread': unreadCount > 0 }"
+          :title="`${unreadCount} unread (no interaction yet)`"
+        >{{ unreadCount }} unread</span>
+        <span
+          class="feed-count"
+          :class="{ 'has-untriaged': untriagedCount > 0 }"
+          :title="`${untriagedCount} untriaged (no thumbs-up/down yet)`"
+        >{{ untriagedCount }} untriaged</span>
+        <span class="feed-articles">{{ feed.article_count }} total</span>
         <span
           class="feed-quality"
           :style="{ color: qualityColor(feed.content_quality) }"
@@ -93,10 +107,20 @@ function qualityColor(quality: string): string {
 
 .feed-meta {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   font-size: 0.75rem;
   color: var(--pq-muted);
   margin-top: 0.125rem;
+}
+
+.feed-count.has-unread {
+  color: var(--pq-accent);
+  font-weight: 500;
+}
+
+.feed-count.has-untriaged {
+  color: var(--pq-text);
 }
 
 .feed-toggle {

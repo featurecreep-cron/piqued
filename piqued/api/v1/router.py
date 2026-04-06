@@ -45,7 +45,16 @@ from piqued.api.v1.schemas import (
     WeightItem,
 )
 from piqued.db import get_session
-from piqued.models import ApiKey, Article, Feed, User, UserProfile
+from piqued.models import (
+    ApiKey,
+    Article,
+    Feed,
+    Feedback,
+    FeedbackSource,
+    Section,
+    User,
+    UserProfile,
+)
 from piqued.web.data import (
     get_article_detail,
     get_feed_detail,
@@ -119,13 +128,78 @@ async def list_feeds(
     user: User = Depends(get_api_user),
     session: AsyncSession = Depends(get_session),
 ):
-    # Get article counts per feed via a single query (avoids lazy-load in async)
-    from sqlalchemy import func
+    # Per-feed article counts via aggregated queries (avoid async lazy-loads).
+    #
+    # Three numbers per feed:
+    #
+    # - article_count: total articles ever ingested for this feed
+    # - unread_count: articles with NO feedback rows from this user on any of
+    #   their sections (never click-throughed, never voted)
+    # - untriaged_count: articles with no `explicit` feedback rows from this
+    #   user on any section (may have click-throughed but never thumbs up/down)
+    #
+    # Both unread/untriaged restrict to processed articles (status=complete) so
+    # that pending/skipped articles don't inflate the "you haven't read this"
+    # count for things you can't actually read.
+    from piqued.models import ArticleStatus
+    from sqlalchemy import and_, distinct, func
 
-    count_result = await session.execute(
-        select(Article.feed_id, func.count()).group_by(Article.feed_id)
+    # Total article count per feed
+    total_result = await session.execute(
+        select(Article.feed_id, func.count(Article.id)).group_by(Article.feed_id)
     )
-    article_counts = dict(count_result.all())
+    total_counts = dict(total_result.all())
+
+    # Articles with at least one feedback row of any kind from this user
+    seen_subq = (
+        select(distinct(Article.id))
+        .select_from(Article)
+        .join(Section, Section.article_id == Article.id)
+        .join(
+            Feedback,
+            and_(
+                Feedback.section_id == Section.id,
+                Feedback.user_id == user.id,
+            ),
+        )
+        .subquery()
+    )
+
+    unread_result = await session.execute(
+        select(Article.feed_id, func.count(Article.id))
+        .where(
+            Article.status == ArticleStatus.complete,
+            ~Article.id.in_(select(seen_subq)),
+        )
+        .group_by(Article.feed_id)
+    )
+    unread_counts = dict(unread_result.all())
+
+    # Articles with at least one *explicit* feedback row from this user
+    triaged_subq = (
+        select(distinct(Article.id))
+        .select_from(Article)
+        .join(Section, Section.article_id == Article.id)
+        .join(
+            Feedback,
+            and_(
+                Feedback.section_id == Section.id,
+                Feedback.user_id == user.id,
+                Feedback.source == FeedbackSource.explicit,
+            ),
+        )
+        .subquery()
+    )
+
+    untriaged_result = await session.execute(
+        select(Article.feed_id, func.count(Article.id))
+        .where(
+            Article.status == ArticleStatus.complete,
+            ~Article.id.in_(select(triaged_subq)),
+        )
+        .group_by(Article.feed_id)
+    )
+    untriaged_counts = dict(untriaged_result.all())
 
     data = await get_feeds_list(session)
     feeds = []
@@ -141,7 +215,9 @@ async def list_feeds(
                     category=feed.category,
                     active=feed.active,
                     content_quality=feed.content_quality,
-                    article_count=article_counts.get(feed.id, 0),
+                    article_count=total_counts.get(feed.id, 0),
+                    unread_count=unread_counts.get(feed.id, 0),
+                    untriaged_count=untriaged_counts.get(feed.id, 0),
                 )
             )
             categories[cat].append(feed.id)
