@@ -2,6 +2,7 @@ fastapi[standard]==0.135.*
 uvicorn[standard]==0.43.*
 sqlalchemy[asyncio]==2.0.*
 aiosqlite==0.22.*
+alembic==1.16.*
 httpx==0.28.*
 google-genai==1.70.*
 openai==2.30.*

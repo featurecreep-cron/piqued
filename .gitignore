@@ -15,7 +15,11 @@ htmlcov/
 node_modules/
 frontend/dist/
 frontend/test-results/
+test-results/
 piqued/web/spa
 
 # Planning docs (internal, not public)
 docs/
+
+# AI assistant instructions (internal, not public)
+CLAUDE.md

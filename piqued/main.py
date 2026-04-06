@@ -14,14 +14,14 @@ class _HealthCheckFilter(logging.Filter):
 
 logging.getLogger("uvicorn.access").addFilter(_HealthCheckFilter())
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
+from apscheduler.schedulers.asyncio import AsyncIOScheduler  # noqa: E402
+from fastapi import FastAPI  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
 
-from piqued import config
-from piqued.db import engine
-from piqued.migrations import run_migrations
-from piqued.models import Base
+from piqued import config  # noqa: E402
+from piqued.db import engine  # noqa: E402
+from piqued.db_bootstrap import bootstrap_database  # noqa: E402
+from piqued.models import Base  # noqa: F401, E402  (kept for re-export compat)
 
 logger = logging.getLogger(__name__)
 scheduler = AsyncIOScheduler()
@@ -29,11 +29,8 @@ scheduler = AsyncIOScheduler()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create/update tables on startup
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        # Apply column additions for tables that already existed
-        await run_migrations(conn)
+    # Create/update tables on startup via Alembic
+    await bootstrap_database()
 
     # Load settings from DB into cache
     await config.load_settings_from_db()
