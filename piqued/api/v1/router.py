@@ -397,8 +397,9 @@ async def save_settings_api(
             settings_to_save[key] = val
 
     if settings_to_save:
-        await config.save_settings(settings_to_save)
-        await config.load_settings_from_db()
+        # Reuse the dep-injected session — opening a second connection while
+        # this one is alive would deadlock SQLite on the write.
+        await config.save_settings(settings_to_save, session=session)
 
     data = await get_settings_data(admin, session)
     return SettingsResponse(settings=data["current"], is_admin=data["is_admin"])

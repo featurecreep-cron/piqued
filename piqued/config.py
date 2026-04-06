@@ -118,21 +118,34 @@ async def save_setting(key: str, value: str):
     _cache[key] = value
 
 
-async def save_settings(settings_dict: dict[str, str]):
-    """Save multiple settings to the DB and update cache in a single session."""
+async def save_settings(settings_dict: dict[str, str], session=None):
+    """Save multiple settings to the DB and update cache.
+
+    If a session is supplied, the writes are performed on that session and
+    committed in-place. This is required when called from inside a FastAPI
+    request handler where a dependency-injected session is already open —
+    opening a second connection would deadlock SQLite on the write.
+    """
     from sqlalchemy.dialects.sqlite import insert
 
-    from piqued.db import async_session
     from piqued.models import Setting
 
-    async with async_session() as session:
+    async def _write(s):
         for key, value in settings_dict.items():
             stmt = insert(Setting).values(key=key, value=value)
             stmt = stmt.on_conflict_do_update(
                 index_elements=["key"], set_={"value": value}
             )
-            await session.execute(stmt)
-        await session.commit()
+            await s.execute(stmt)
+        await s.commit()
+
+    if session is not None:
+        await _write(session)
+    else:
+        from piqued.db import async_session
+
+        async with async_session() as s:
+            await _write(s)
 
     _cache.update(settings_dict)
 

@@ -145,6 +145,93 @@ def test_migrated_db_runs_pending_upgrades_idempotently():
     assert _column_exists("users", "preferences")
 
 
+def test_max_articles_per_cycle_data_migration_bumps_old_default():
+    """Existing settings row with the old default '3' is bumped to '25'.
+
+    Reproduces the upgrade path for an existing user whose DB was created
+    before c8a4f12d0e91. The migration must NOT touch values that the user
+    explicitly chose (anything other than the literal old default).
+    """
+    from piqued.db_bootstrap import _bootstrap_sync
+
+    # Bootstrap the DB at the baseline (pre-bump) revision, then insert a
+    # settings row matching the old default. Easiest path: do a full
+    # bootstrap (head), reset alembic_version to the previous revision,
+    # rewrite the settings rows, then bootstrap again to apply the bump.
+    _bootstrap_sync()  # full create_all + stamp head
+
+    engine = _sync_engine()
+    try:
+        with engine.begin() as conn:
+            # Pretend we are sitting on the previous revision (b67e91e360c1)
+            conn.execute(text("UPDATE alembic_version SET version_num='b67e91e360c1'"))
+            # Old default + a user-customized value + a different unrelated key
+            conn.execute(
+                text(
+                    "INSERT INTO settings (key, value) VALUES "
+                    "('max_articles_per_cycle', '3'), "
+                    "('feed_poll_interval_minutes', '7')"
+                )
+            )
+    finally:
+        engine.dispose()
+
+    # Run bootstrap again — should apply c8a4f12d0e91 and bump the row
+    _bootstrap_sync()
+
+    engine = _sync_engine()
+    try:
+        with engine.connect() as conn:
+            bumped = conn.execute(
+                text("SELECT value FROM settings WHERE key='max_articles_per_cycle'")
+            ).scalar()
+            untouched = conn.execute(
+                text(
+                    "SELECT value FROM settings WHERE key='feed_poll_interval_minutes'"
+                )
+            ).scalar()
+            head = conn.execute(
+                text("SELECT version_num FROM alembic_version")
+            ).scalar()
+    finally:
+        engine.dispose()
+
+    assert bumped == "25", "old default '3' should have been bumped to '25'"
+    assert untouched == "7", "user's poll interval must not be touched"
+    assert head == "c8a4f12d0e91", "should be at head after upgrade"
+
+
+def test_max_articles_per_cycle_data_migration_leaves_custom_values_alone():
+    """A user who set max_articles_per_cycle='10' must keep their value."""
+    from piqued.db_bootstrap import _bootstrap_sync
+
+    _bootstrap_sync()
+    engine = _sync_engine()
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("UPDATE alembic_version SET version_num='b67e91e360c1'"))
+            conn.execute(
+                text(
+                    "INSERT INTO settings (key, value) VALUES ('max_articles_per_cycle', '10')"
+                )
+            )
+    finally:
+        engine.dispose()
+
+    _bootstrap_sync()
+
+    engine = _sync_engine()
+    try:
+        with engine.connect() as conn:
+            value = conn.execute(
+                text("SELECT value FROM settings WHERE key='max_articles_per_cycle'")
+            ).scalar()
+    finally:
+        engine.dispose()
+
+    assert value == "10", "user-chosen value must not be touched by the data migration"
+
+
 def test_orm_query_works_after_legacy_upgrade():
     """The exact query from the production stack trace must succeed post-bootstrap."""
     # Build legacy schema with a user

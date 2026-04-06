@@ -272,6 +272,352 @@ class TestApiSettings:
             assert "settings" in data
             assert data["is_admin"] is True
 
+    @pytest.mark.asyncio
+    async def test_save_settings_persists_auth_methods(self, transport):
+        """Auth checkboxes round-trip as a comma-separated string.
+
+        The response is built by re-reading the settings table inside the
+        same request, so a matching value in the response confirms a real
+        DB write rather than an echoed payload.
+        """
+        _, token = await _create_user()
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            r = await client.put(
+                "/api/v1/settings",
+                json={"auth_methods": "oidc,header"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert r.status_code == 200
+            assert r.json()["settings"]["auth_methods"] == "oidc,header"
+
+            # Independent GET (separate request) — confirms DB persistence
+            r2 = await client.get(
+                "/api/v1/settings",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert r2.json()["settings"]["auth_methods"] == "oidc,header"
+
+    @pytest.mark.asyncio
+    async def test_save_settings_masked_password_is_ignored(self, transport):
+        """The masked •••••••• placeholder must NOT overwrite a real password."""
+        _, token = await _create_user()
+        # Seed a real value in the DB so we can prove it survives a masked save
+        await config.save_setting("llm_api_key", "real-secret-abc123")
+
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            r = await client.put(
+                "/api/v1/settings",
+                json={"llm_api_key": "••••••••"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert r.status_code == 200
+
+            # Read back via the API (response is masked, so check the cache)
+            assert r.status_code == 200
+
+        # The save_settings_api function only writes keys that pass the
+        # masked-placeholder filter — confirm the cache still holds the real value
+        assert config.get("llm_api_key") == "real-secret-abc123"
+
+    @pytest.mark.asyncio
+    async def test_save_settings_requires_admin(self, transport):
+        _, token = await _create_user(role="user")
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            r = await client.put(
+                "/api/v1/settings",
+                json={"auth_methods": "local"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert r.status_code == 403
+
+
+class TestApiTestLlm:
+    @pytest.mark.asyncio
+    async def test_rejects_missing_provider(self, transport):
+        _, token = await _create_user()
+        config._cache["llm_provider"] = ""
+        config._cache["llm_model"] = ""
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            r = await client.post(
+                "/api/v1/settings/test-llm",
+                json={},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert r.status_code == 200
+            body = r.json()
+            assert body["ok"] is False
+            assert "required" in body["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_rejects_missing_api_key(self, transport):
+        _, token = await _create_user()
+        config._cache["llm_api_key"] = ""
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            r = await client.post(
+                "/api/v1/settings/test-llm",
+                json={"provider": "gemini", "model": "gemini-2.5-flash"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            body = r.json()
+            assert body["ok"] is False
+            assert "api key" in body["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_ollama_does_not_require_api_key(self, transport, monkeypatch):
+        """Ollama is local — the api-key required check must be skipped."""
+        _, token = await _create_user()
+        # Clear the saved api key so the test proves ollama bypasses the
+        # missing-key validation entirely (not just inheriting a saved key).
+        config._cache["llm_api_key"] = ""
+
+        from piqued.llm.base import LLMResponse
+
+        captured = {}
+
+        class FakeClient:
+            async def generate(self, prompt, **kwargs):
+                return LLMResponse(text="ok", tokens_used=2, model="llama3")
+
+        def fake_create_client(provider, model, api_key="", base_url=""):
+            captured["provider"] = provider
+            captured["api_key"] = api_key
+            return FakeClient()
+
+        monkeypatch.setattr("piqued.llm.create_client", fake_create_client)
+
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            r = await client.post(
+                "/api/v1/settings/test-llm",
+                json={
+                    "provider": "ollama",
+                    "model": "llama3",
+                    "base_url": "http://localhost:11434",
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            body = r.json()
+            assert body["ok"] is True, f"expected ok=True, got: {body}"
+            assert "ollama/llama3" in body["detail"]
+            assert "ok" in body["detail"]
+        assert captured["provider"] == "ollama"
+        assert captured["api_key"] == ""
+
+    @pytest.mark.asyncio
+    async def test_uses_saved_api_key_when_body_omits_it(self, transport, monkeypatch):
+        """If the user clicks Test without retyping a masked password, the saved key is used."""
+        _, token = await _create_user()
+        config._cache["llm_api_key"] = "saved-real-key"
+        config._cache["llm_provider"] = "gemini"
+        config._cache["llm_model"] = "gemini-2.5-flash"
+
+        from piqued.llm.base import LLMResponse
+
+        captured = {}
+
+        class FakeClient:
+            async def generate(self, prompt, **kwargs):
+                return LLMResponse(text="ok", tokens_used=1, model="g")
+
+        def fake_create_client(provider, model, api_key="", base_url=""):
+            captured["api_key"] = api_key
+            captured["provider"] = provider
+            return FakeClient()
+
+        monkeypatch.setattr("piqued.llm.create_client", fake_create_client)
+
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            r = await client.post(
+                "/api/v1/settings/test-llm",
+                json={"provider": "gemini", "model": "gemini-2.5-flash"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert r.json()["ok"] is True
+
+        assert captured["api_key"] == "saved-real-key"
+        assert captured["provider"] == "gemini"
+
+    @pytest.mark.asyncio
+    async def test_reports_provider_exception(self, transport, monkeypatch):
+        """An exception from the LLM client must surface as ok=False, not a 500."""
+        _, token = await _create_user()
+        config._cache["llm_api_key"] = "k"
+
+        def fake_create_client(*a, **kw):
+            raise RuntimeError("boom: invalid api key")
+
+        monkeypatch.setattr("piqued.llm.create_client", fake_create_client)
+
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            r = await client.post(
+                "/api/v1/settings/test-llm",
+                json={"provider": "gemini", "model": "gemini-2.5-flash"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert r.status_code == 200
+            body = r.json()
+            assert body["ok"] is False
+            assert "RuntimeError" in body["detail"]
+            assert "boom" in body["detail"]
+
+    @pytest.mark.asyncio
+    async def test_requires_admin(self, transport):
+        _, token = await _create_user(role="user")
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            r = await client.post(
+                "/api/v1/settings/test-llm",
+                json={"provider": "gemini", "model": "gemini-2.5-flash"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert r.status_code == 403
+
+
+class TestApiTestFreshrss:
+    @pytest.mark.asyncio
+    async def test_rejects_missing_fields(self, transport):
+        _, token = await _create_user()
+        config._cache["freshrss_base_url"] = ""
+        config._cache["freshrss_username"] = ""
+        config._cache["freshrss_api_pass"] = ""
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            r = await client.post(
+                "/api/v1/settings/test-freshrss",
+                json={},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            body = r.json()
+            assert body["ok"] is False
+            assert "required" in body["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_success_reports_subscription_count(self, transport, monkeypatch):
+        _, token = await _create_user()
+
+        async def fake_authenticate(self):
+            self._token = "fake-token"
+
+        async def fake_get_subscriptions(self):
+            return [{"id": "1"}, {"id": "2"}, {"id": "3"}]
+
+        async def fake_close(self):
+            pass
+
+        monkeypatch.setattr(
+            "piqued.ingestion.freshrss.FreshRSSClient._authenticate", fake_authenticate
+        )
+        monkeypatch.setattr(
+            "piqued.ingestion.freshrss.FreshRSSClient.get_subscriptions",
+            fake_get_subscriptions,
+        )
+        monkeypatch.setattr(
+            "piqued.ingestion.freshrss.FreshRSSClient.close", fake_close
+        )
+
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            r = await client.post(
+                "/api/v1/settings/test-freshrss",
+                json={
+                    "freshrss_base_url": "https://example.com",
+                    "freshrss_username": "user",
+                    "freshrss_api_pass": "pass",
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            body = r.json()
+            assert body["ok"] is True
+            assert "3 subscriptions" in body["detail"]
+
+    @pytest.mark.asyncio
+    async def test_reports_auth_failure(self, transport, monkeypatch):
+        _, token = await _create_user()
+
+        async def fake_authenticate(self):
+            raise RuntimeError("Auth failed: bad credentials")
+
+        async def fake_close(self):
+            pass
+
+        monkeypatch.setattr(
+            "piqued.ingestion.freshrss.FreshRSSClient._authenticate", fake_authenticate
+        )
+        monkeypatch.setattr(
+            "piqued.ingestion.freshrss.FreshRSSClient.close", fake_close
+        )
+
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            r = await client.post(
+                "/api/v1/settings/test-freshrss",
+                json={
+                    "freshrss_base_url": "https://example.com",
+                    "freshrss_username": "user",
+                    "freshrss_api_pass": "pass",
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            body = r.json()
+            assert body["ok"] is False
+            assert "RuntimeError" in body["detail"]
+            assert "Auth failed" in body["detail"]
+
+    @pytest.mark.asyncio
+    async def test_uses_saved_api_pass_when_body_omits_it(self, transport, monkeypatch):
+        _, token = await _create_user()
+        config._cache["freshrss_api_pass"] = "saved-pass-xyz"
+        config._cache["freshrss_base_url"] = "https://saved.example.com"
+        config._cache["freshrss_username"] = "saved-user"
+
+        captured = {}
+
+        def fake_init(self, base_url=None, username=None, api_pass=None):
+            captured["base_url"] = base_url
+            captured["username"] = username
+            captured["api_pass"] = api_pass
+            self._token = None
+            import httpx
+
+            self._client = httpx.AsyncClient()
+            self.base_url = base_url
+            self.username = username
+            self.api_pass = api_pass
+
+        async def fake_authenticate(self):
+            pass
+
+        async def fake_get_subscriptions(self):
+            return []
+
+        async def fake_close(self):
+            await self._client.aclose()
+
+        monkeypatch.setattr(
+            "piqued.ingestion.freshrss.FreshRSSClient.__init__", fake_init
+        )
+        monkeypatch.setattr(
+            "piqued.ingestion.freshrss.FreshRSSClient._authenticate", fake_authenticate
+        )
+        monkeypatch.setattr(
+            "piqued.ingestion.freshrss.FreshRSSClient.get_subscriptions",
+            fake_get_subscriptions,
+        )
+        monkeypatch.setattr(
+            "piqued.ingestion.freshrss.FreshRSSClient.close", fake_close
+        )
+
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            r = await client.post(
+                "/api/v1/settings/test-freshrss",
+                json={
+                    "freshrss_base_url": "https://override.example.com",
+                    "freshrss_username": "override-user",
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert r.json()["ok"] is True
+
+        # Body fields used where present, saved value used where absent
+        assert captured["base_url"] == "https://override.example.com"
+        assert captured["username"] == "override-user"
+        assert captured["api_pass"] == "saved-pass-xyz"
+
 
 class TestApiLog:
     @pytest.mark.asyncio
