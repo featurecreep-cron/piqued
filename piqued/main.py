@@ -4,12 +4,23 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+
+class _HealthCheckFilter(logging.Filter):
+    """Suppress uvicorn access log entries for the /health endpoint."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.getMessage().find("GET /health") == -1
+
+
+logging.getLogger("uvicorn.access").addFilter(_HealthCheckFilter())
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from piqued import config
 from piqued.db import engine
+from piqued.migrations import run_migrations
 from piqued.models import Base
 
 logger = logging.getLogger(__name__)
@@ -21,6 +32,8 @@ async def lifespan(app: FastAPI):
     # Create/update tables on startup
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Apply column additions for tables that already existed
+        await run_migrations(conn)
 
     # Load settings from DB into cache
     await config.load_settings_from_db()
