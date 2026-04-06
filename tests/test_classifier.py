@@ -34,7 +34,12 @@ class FakeClient:
         self._confidence = confidence
 
     async def generate(
-        self, prompt, system_prompt=None, json_mode=False, temperature=0.1, max_tokens=150
+        self,
+        prompt,
+        system_prompt=None,
+        json_mode=False,
+        temperature=0.1,
+        max_tokens=150,
     ):
         return FakeResponse(
             text=json.dumps(
@@ -100,7 +105,13 @@ class TestClassifyContent:
     @pytest.mark.asyncio
     async def test_existing_categories_still_pass(self):
         """Regression: don't break the existing five categories."""
-        for cat in ("full_article", "teaser", "paywall_page", "error_page", "login_wall"):
+        for cat in (
+            "full_article",
+            "teaser",
+            "paywall_page",
+            "error_page",
+            "login_wall",
+        ):
             client = FakeClient(cat)
             classification, _, _ = await classify_content(
                 client, content_text="x", title="t", feed_name="f", url="u"
