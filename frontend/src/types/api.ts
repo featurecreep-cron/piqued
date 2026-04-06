@@ -114,6 +114,11 @@ export interface SettingsResponse {
   is_admin: boolean
 }
 
+export interface ConnectionTestResult {
+  ok: boolean
+  detail: string
+}
+
 export interface ProcessingLogEntry {
   id: number
   article_id: number | null
