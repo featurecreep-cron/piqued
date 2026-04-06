@@ -185,16 +185,24 @@ def test_orm_query_works_after_legacy_upgrade():
     import asyncio
 
     from sqlalchemy import select
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+    from sqlalchemy.ext.asyncio import (
+        AsyncSession,
+        async_sessionmaker,
+        create_async_engine,
+    )
 
     from piqued.models import User
 
     async def _query():
         async_engine = create_async_engine(f"sqlite+aiosqlite:///{TEST_DB_PATH}")
         try:
-            session_factory = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
+            session_factory = async_sessionmaker(
+                async_engine, class_=AsyncSession, expire_on_commit=False
+            )
             async with session_factory() as session:
-                return await session.scalar(select(User).where(User.username == "smilerz"))
+                return await session.scalar(
+                    select(User).where(User.username == "smilerz")
+                )
         finally:
             await async_engine.dispose()
 
