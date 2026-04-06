@@ -47,156 +47,461 @@ const confirmingRoleChange = ref<{ userId: number; role: string } | null>(null)
 
 // ── Config field metadata ────────────────────────────────────────
 interface ConfigField {
+  key: string
   label: string
   help: string
-  type?: 'text' | 'password' | 'number'
+  type?: 'text' | 'password' | 'number' | 'select'
+  options?: { value: string; label: string }[]
+  showIf?: () => boolean
 }
 
-const CONFIG_META: Record<string, { title: string; fields: Record<string, ConfigField> }> = {
-  auth: {
+interface ConfigSection {
+  id: string
+  title: string
+  description?: string
+  advanced?: boolean
+  showIf?: () => boolean
+  fields: ConfigField[]
+}
+
+// Auth method checkbox state — derived from comma-separated auth_methods
+const authMethods = computed<Set<string>>(() => {
+  const raw = settings.value.auth_methods || ''
+  return new Set(raw.split(',').map((m) => m.trim()).filter(Boolean))
+})
+function setAuthMethod(method: string, enabled: boolean) {
+  const current = new Set(authMethods.value)
+  if (enabled) current.add(method)
+  else current.delete(method)
+  settings.value.auth_methods = Array.from(current).join(',')
+}
+function hasAuthMethod(m: string): boolean {
+  return authMethods.value.has(m)
+}
+
+// Show/hide password fields
+const revealedPasswords = ref<Set<string>>(new Set())
+function togglePasswordReveal(key: string) {
+  const next = new Set(revealedPasswords.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  revealedPasswords.value = next
+}
+
+// ── Throughput presets ──────────────────────────────────────────
+interface ThroughputPreset {
+  label: string
+  description: string
+  values: Record<string, string>
+}
+const THROUGHPUT_PRESETS: Record<string, ThroughputPreset> = {
+  conservative: {
+    label: 'Conservative',
+    description: '5 articles per 30-minute cycle, 2 in parallel, 200K tokens/day. Cheap free-tier LLMs.',
+    values: {
+      max_articles_per_cycle: '5',
+      feed_poll_interval_minutes: '30',
+      max_concurrent_articles: '2',
+      daily_token_budget: '200000',
+    },
+  },
+  balanced: {
+    label: 'Balanced',
+    description: '25 articles every 15 minutes, 3 in parallel, 500K tokens/day. Good default for most homelabs.',
+    values: {
+      max_articles_per_cycle: '25',
+      feed_poll_interval_minutes: '15',
+      max_concurrent_articles: '3',
+      daily_token_budget: '500000',
+    },
+  },
+  aggressive: {
+    label: 'Aggressive',
+    description: '100 articles every 10 minutes, 6 in parallel, 2M tokens/day. Drains a backlog fast — watch your bill.',
+    values: {
+      max_articles_per_cycle: '100',
+      feed_poll_interval_minutes: '10',
+      max_concurrent_articles: '6',
+      daily_token_budget: '2000000',
+    },
+  },
+}
+const PRESET_KEYS = ['max_articles_per_cycle', 'feed_poll_interval_minutes', 'max_concurrent_articles', 'daily_token_budget']
+
+const activeThroughputPreset = computed<string>(() => {
+  for (const [name, preset] of Object.entries(THROUGHPUT_PRESETS)) {
+    if (PRESET_KEYS.every((k) => settings.value[k] === preset.values[k])) {
+      return name
+    }
+  }
+  return 'custom'
+})
+
+function applyThroughputPreset(name: string) {
+  if (name === 'custom') return
+  const preset = THROUGHPUT_PRESETS[name]
+  if (!preset) return
+  for (const [k, v] of Object.entries(preset.values)) {
+    settings.value[k] = v
+  }
+}
+
+// ── Config sections (declarative) ────────────────────────────────
+const CONFIG_SECTIONS: ConfigSection[] = [
+  {
+    id: 'auth',
     title: 'Authentication',
-    fields: {
-      auth_methods: {
-        label: 'Auth methods',
-        help: 'Comma-separated list of enabled methods: oidc, local, header',
-      },
-      session_secret_key: {
+    description: 'How users log in. Pick one or more methods.',
+    fields: [
+      // auth_methods rendered as checkboxes — handled in template
+      {
+        key: 'session_secret_key',
         label: 'Session secret',
-        help: 'Auto-generated on first boot. Change to invalidate all sessions.',
+        help: 'Auto-generated on first boot. Change this to immediately log out every active session — useful if you suspect a leaked cookie.',
         type: 'password',
       },
-      trusted_proxy_ip: {
+      {
+        key: 'trusted_proxy_ip',
         label: 'Trusted proxy IP',
-        help: 'IP allowed to send X-authentik-username headers for proxy auth',
+        help: 'Only relevant when "Header (forward auth)" is enabled. Set this to the IP of your reverse proxy (Authentik outpost, Traefik, etc.) so piqued only trusts X-authentik-username headers from that source.',
+        showIf: () => hasAuthMethod('header'),
       },
-    },
+    ],
   },
-  oidc: {
-    title: 'OIDC (Authentik)',
-    fields: {
-      oidc_client_id: { label: 'Client ID', help: 'OAuth2 client ID from your identity provider' },
-      oidc_client_secret: { label: 'Client secret', help: 'OAuth2 client secret', type: 'password' },
-      oidc_server_metadata_url: {
+  {
+    id: 'oidc',
+    title: 'OIDC (single sign-on)',
+    description: 'OAuth2 / OpenID Connect provider config. Hidden unless OIDC is enabled above.',
+    showIf: () => hasAuthMethod('oidc'),
+    fields: [
+      {
+        key: 'oidc_client_id',
+        label: 'Client ID',
+        help: 'OAuth2 client ID created in your identity provider (e.g. Authentik application slug).',
+      },
+      {
+        key: 'oidc_client_secret',
+        label: 'Client secret',
+        help: 'OAuth2 client secret. Stored encrypted in the DB after save and never returned to the browser as plaintext.',
+        type: 'password',
+      },
+      {
+        key: 'oidc_server_metadata_url',
         label: 'Metadata URL',
-        help: 'OpenID Connect discovery URL, e.g. https://auth.example.com/.well-known/openid-configuration',
+        help: 'OpenID Connect discovery URL — usually ends in /.well-known/openid-configuration. Authentik example: https://auth.example.com/application/o/piqued/.well-known/openid-configuration',
       },
-      oidc_admin_group: { label: 'Admin group', help: 'Identity provider group that grants admin role' },
-    },
+      {
+        key: 'oidc_admin_group',
+        label: 'Admin group',
+        help: 'Group claim that grants the admin role. Members of this group at your IdP are auto-promoted to piqued admin on next login.',
+      },
+    ],
   },
-  llm_primary: {
+  {
+    id: 'llm_primary',
     title: 'LLM — Primary',
-    fields: {
-      llm_provider: { label: 'Provider', help: 'gemini, openai, or ollama' },
-      llm_model: { label: 'Model', help: 'Model name, e.g. gemini-2.5-flash' },
-      llm_api_key: { label: 'API key', help: 'Provider API key', type: 'password' },
-      llm_base_url: { label: 'Base URL', help: 'Only needed for Ollama (e.g. http://localhost:11434)' },
-    },
+    description: 'The main model used for article segmentation and (by default) classification + scoring. This is the only LLM block most users need.',
+    fields: [
+      {
+        key: 'llm_provider',
+        label: 'Provider',
+        help: 'Which LLM vendor to use. Gemini and Claude have generous free tiers; OpenAI is paid; Ollama is local.',
+        type: 'select',
+        options: [
+          { value: 'gemini', label: 'Gemini (Google)' },
+          { value: 'openai', label: 'OpenAI' },
+          { value: 'claude', label: 'Claude (Anthropic)' },
+          { value: 'ollama', label: 'Ollama (local)' },
+        ],
+      },
+      {
+        key: 'llm_model',
+        label: 'Model',
+        help: 'Exact model identifier. Examples: gemini-2.5-flash, gpt-4o-mini, claude-haiku-4-5-20251001, llama3.1:8b. Cheaper/faster models are fine — segmentation does not need a frontier model.',
+      },
+      {
+        key: 'llm_api_key',
+        label: 'API key',
+        help: 'Vendor API key. Stored in the database — do not paste a personal key into a shared instance. Saving "••••••••" leaves the existing value alone.',
+        type: 'password',
+      },
+      {
+        key: 'llm_base_url',
+        label: 'Base URL',
+        help: 'Only needed for Ollama (e.g. http://localhost:11434) or OpenAI-compatible proxies. Leave empty for cloud providers.',
+      },
+    ],
   },
-  llm_classify: {
-    title: 'LLM — Classification (optional)',
-    fields: {
-      llm_classify_provider: { label: 'Provider', help: 'Leave empty to use primary LLM' },
-      llm_classify_model: { label: 'Model', help: 'Override model for content classification' },
-      llm_classify_api_key: { label: 'API key', help: 'Override API key', type: 'password' },
-      llm_classify_base_url: { label: 'Base URL', help: 'Override base URL' },
-    },
-  },
-  llm_scoring: {
-    title: 'LLM — Scoring (optional)',
-    fields: {
-      llm_scoring_provider: { label: 'Provider', help: 'Leave empty to use classification or primary LLM' },
-      llm_scoring_model: { label: 'Model', help: 'Use a cheap/fast model for interest scoring' },
-      llm_scoring_api_key: { label: 'API key', help: 'Override API key', type: 'password' },
-      llm_scoring_base_url: { label: 'Base URL', help: 'Override base URL' },
-    },
-  },
-  freshrss: {
+  {
+    id: 'freshrss',
     title: 'FreshRSS',
-    fields: {
-      freshrss_base_url: { label: 'URL', help: 'Base URL of your FreshRSS instance' },
-      freshrss_username: { label: 'Username', help: 'FreshRSS API username' },
-      freshrss_api_pass: { label: 'API password', help: 'FreshRSS API password', type: 'password' },
-    },
+    description: 'Where piqued pulls articles from. Uses the FreshRSS GReader API.',
+    fields: [
+      {
+        key: 'freshrss_base_url',
+        label: 'URL',
+        help: 'Base URL of your FreshRSS instance, no trailing slash. Example: https://freshrss.example.com',
+      },
+      {
+        key: 'freshrss_username',
+        label: 'Username',
+        help: 'Your FreshRSS account username (not the admin user — the account whose feeds you want triaged).',
+      },
+      {
+        key: 'freshrss_api_pass',
+        label: 'API password',
+        help: 'The API password from FreshRSS → Settings → Authentication. This is NOT your login password — it is a separate token FreshRSS generates for API clients.',
+        type: 'password',
+      },
+    ],
   },
-  processing: {
-    title: 'Processing',
-    fields: {
-      feed_poll_interval_minutes: { label: 'Poll interval', help: 'Minutes between feed checks', type: 'number' },
-      max_concurrent_articles: { label: 'Concurrent articles', help: 'Max articles processed simultaneously', type: 'number' },
-      max_article_words: { label: 'Max article words', help: 'Articles longer than this are truncated', type: 'number' },
-      daily_token_budget: { label: 'Daily token budget', help: 'Max LLM tokens per day across all tasks', type: 'number' },
-      max_retries: { label: 'Max retries', help: 'Retry count for failed LLM calls', type: 'number' },
-      backlog_order: { label: 'Backlog order', help: 'newest_first or oldest_first' },
-      max_articles_per_cycle: { label: 'Articles per cycle', help: 'Max articles processed per poll cycle', type: 'number' },
-    },
+  // Throughput is rendered specially via the preset selector
+  {
+    id: 'scoring_mode',
+    title: 'Scoring mode',
+    description: 'How piqued ranks articles against your interest profile.',
+    fields: [
+      {
+        key: 'scoring_mode',
+        label: 'Scoring mode',
+        help: 'formula = fast keyword/embedding match (no LLM cost). llm = the model writes a confidence score per section (slow + token-heavy). hybrid = formula first, then LLM only on borderline items. Hybrid is the right answer for most users.',
+        type: 'select',
+        options: [
+          { value: 'hybrid', label: 'Hybrid (recommended)' },
+          { value: 'formula', label: 'Formula only (no LLM)' },
+          { value: 'llm', label: 'LLM only (expensive)' },
+        ],
+      },
+      {
+        key: 'confidence_threshold',
+        label: 'Confidence threshold',
+        help: 'Sections scoring above this appear in the "Likely" tier in your river view. 0.4 is a good middle ground — raise to be pickier, lower to surface more.',
+        type: 'number',
+      },
+      {
+        key: 'surprise_surface_pct',
+        label: 'Surprise surface',
+        help: 'Fraction of low-scoring items piqued randomly promotes to "Discover" so you don\'t live in a filter bubble. 0.10 = 10%.',
+        type: 'number',
+      },
+    ],
   },
-  interest: {
-    title: 'Interest Model',
-    fields: {
-      confidence_threshold: { label: 'Confidence threshold', help: 'Score above this appears in "Likely" tier (0-1)', type: 'number' },
-      surprise_surface_pct: { label: 'Surprise surface %', help: 'Fraction of below-threshold items shown as "Discover"', type: 'number' },
-      scoring_mode: { label: 'Scoring mode', help: 'formula, llm, or hybrid' },
-      profile_synthesis_threshold: { label: 'Synthesis threshold', help: 'Feedback count needed before auto-synthesis', type: 'number' },
-      profile_max_words: { label: 'Max profile words', help: 'Profile text truncated to this length for prompts', type: 'number' },
-      scoring_batch_size: { label: 'Scoring batch size', help: 'Sections scored per LLM call', type: 'number' },
-    },
+  // ── Advanced sections (collapsed by default) ──────────────────
+  {
+    id: 'llm_classify',
+    title: 'LLM — Classification override',
+    description: 'Use a different model for content classification. Leave provider empty to inherit from primary.',
+    advanced: true,
+    fields: [
+      {
+        key: 'llm_classify_provider',
+        label: 'Provider',
+        help: 'Empty = use primary LLM. Set to override.',
+        type: 'select',
+        options: [
+          { value: '', label: '(use primary)' },
+          { value: 'gemini', label: 'Gemini' },
+          { value: 'openai', label: 'OpenAI' },
+          { value: 'claude', label: 'Claude' },
+          { value: 'ollama', label: 'Ollama' },
+        ],
+      },
+      { key: 'llm_classify_model', label: 'Model', help: 'Model name override.' },
+      { key: 'llm_classify_api_key', label: 'API key', help: 'API key for the override provider.', type: 'password' },
+      { key: 'llm_classify_base_url', label: 'Base URL', help: 'Base URL override.' },
+    ],
   },
-  decay: {
-    title: 'Interest Decay',
-    fields: {
-      interest_decay_rate: { label: 'Decay rate', help: 'Weight reduction per decay cycle (0-1)', type: 'number' },
-      interest_decay_after_days: { label: 'Decay after days', help: 'Days without reinforcement before decay starts', type: 'number' },
-    },
+  {
+    id: 'llm_scoring',
+    title: 'LLM — Scoring override',
+    description: 'Use a tiny/cheap model just for interest scoring. Inherits from classification, then primary, if empty.',
+    advanced: true,
+    fields: [
+      {
+        key: 'llm_scoring_provider',
+        label: 'Provider',
+        help: 'Empty = inherit from classification or primary. Useful for routing scoring to a $0/M-token model like gemini-flash-lite.',
+        type: 'select',
+        options: [
+          { value: '', label: '(inherit)' },
+          { value: 'gemini', label: 'Gemini' },
+          { value: 'openai', label: 'OpenAI' },
+          { value: 'claude', label: 'Claude' },
+          { value: 'ollama', label: 'Ollama' },
+        ],
+      },
+      { key: 'llm_scoring_model', label: 'Model', help: 'Model name override.' },
+      { key: 'llm_scoring_api_key', label: 'API key', help: 'API key for scoring override.', type: 'password' },
+      { key: 'llm_scoring_base_url', label: 'Base URL', help: 'Base URL override.' },
+    ],
   },
-  output: {
-    title: 'RSS Output',
-    fields: {
-      rss_feed_api_key: { label: 'Feed API key', help: 'API key for authenticated RSS feed access', type: 'password' },
-    },
+  {
+    id: 'processing_advanced',
+    title: 'Processing — advanced',
+    description: 'Knobs that the throughput preset does not cover.',
+    advanced: true,
+    fields: [
+      {
+        key: 'max_article_words',
+        label: 'Max article words',
+        help: 'Articles longer than this are truncated before being sent to the LLM. Keeps token usage predictable on long-form sites.',
+        type: 'number',
+      },
+      {
+        key: 'max_retries',
+        label: 'Max retries',
+        help: 'How many times to retry a failing LLM call before giving up and logging an error.',
+        type: 'number',
+      },
+      {
+        key: 'backlog_order',
+        label: 'Backlog order',
+        help: 'newest_first = catch up on what just landed. oldest_first = drain your unread queue chronologically.',
+        type: 'select',
+        options: [
+          { value: 'newest_first', label: 'Newest first' },
+          { value: 'oldest_first', label: 'Oldest first' },
+        ],
+      },
+      {
+        key: 'profile_synthesis_threshold',
+        label: 'Auto-synthesis threshold',
+        help: 'Number of votes piqued waits for before automatically rolling them into your profile. Lower = profile updates faster but is jumpier.',
+        type: 'number',
+      },
+      {
+        key: 'profile_max_words',
+        label: 'Profile max words',
+        help: 'Profile text is truncated to this length when sent to the LLM as context. Keeps prompt cost bounded.',
+        type: 'number',
+      },
+      {
+        key: 'scoring_batch_size',
+        label: 'Scoring batch size',
+        help: 'How many sections piqued packs into a single scoring LLM call. Larger = cheaper per section but slower per request.',
+        type: 'number',
+      },
+    ],
   },
+  {
+    id: 'decay',
+    title: 'Interest decay',
+    description: 'Old interests gradually lose weight so your profile follows your tastes. Most users never touch these.',
+    advanced: true,
+    fields: [
+      {
+        key: 'interest_decay_rate',
+        label: 'Decay rate',
+        help: 'Fraction of weight removed per nightly decay cycle (0-1). 0.05 = 5% off per night.',
+        type: 'number',
+      },
+      {
+        key: 'interest_decay_after_days',
+        label: 'Decay after (days)',
+        help: 'Days an interest can sit untouched before decay starts eating it.',
+        type: 'number',
+      },
+    ],
+  },
+  {
+    id: 'output',
+    title: 'RSS output',
+    description: 'Expose your scored feed as an RSS endpoint other readers can consume.',
+    advanced: true,
+    fields: [
+      {
+        key: 'rss_feed_api_key',
+        label: 'Feed API key',
+        help: 'Static key required to access /rss.xml. Generate something random — anyone with this URL can read your filtered feed.',
+        type: 'password',
+      },
+    ],
+  },
+]
+
+const showAdvanced = ref(false)
+
+const visibleSections = computed(() =>
+  CONFIG_SECTIONS.filter((s) => {
+    if (s.showIf && !s.showIf()) return false
+    if (s.advanced && !showAdvanced.value) return false
+    return true
+  }),
+)
+
+function visibleFields(section: ConfigSection): ConfigField[] {
+  return section.fields.filter((f) => (f.showIf ? f.showIf() : true))
 }
 
-// Group settings by category for display
-const configGroups = computed(() => {
-  const groups: { title: string; fields: { key: string; label: string; help: string; type: string }[] }[] = []
-  const assigned = new Set<string>()
-
-  for (const [, group] of Object.entries(CONFIG_META)) {
-    const fields: { key: string; label: string; help: string; type: string }[] = []
-    for (const [key, meta] of Object.entries(group.fields)) {
-      if (key in settings.value) {
-        fields.push({
-          key,
-          label: meta.label,
-          help: meta.help,
-          type: meta.type || (key.includes('key') || key.includes('pass') || key.includes('secret') ? 'password' : 'text'),
-        })
-        assigned.add(key)
-      }
-    }
-    if (fields.length) {
-      groups.push({ title: group.title, fields })
-    }
-  }
-
-  // Any unrecognized keys go in an "Other" group
-  const other: { key: string; label: string; help: string; type: string }[] = []
-  for (const key of Object.keys(settings.value)) {
-    if (!assigned.has(key)) {
-      other.push({
-        key,
-        label: key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
-        help: '',
-        type: key.includes('key') || key.includes('pass') || key.includes('secret') ? 'password' : 'text',
-      })
-    }
-  }
-  if (other.length) {
-    groups.push({ title: 'Other', fields: other })
-  }
-
-  return groups
+// ── Status panel ────────────────────────────────────────────────
+const configStatus = computed(() => {
+  const llmOk = !!settings.value.llm_provider && !!settings.value.llm_model && (
+    settings.value.llm_provider === 'ollama' ||
+    !!settings.value.llm_api_key ||
+    settings.value.llm_api_key === '••••••••'
+  )
+  const freshrssOk = !!settings.value.freshrss_base_url && !!settings.value.freshrss_username && (
+    !!settings.value.freshrss_api_pass || settings.value.freshrss_api_pass === '••••••••'
+  )
+  const authOk = authMethods.value.size > 0
+  const oidcOk = !hasAuthMethod('oidc') || (
+    !!settings.value.oidc_client_id && !!settings.value.oidc_server_metadata_url
+  )
+  return [
+    { label: 'Authentication', ok: authOk && oidcOk },
+    { label: 'Primary LLM', ok: llmOk },
+    { label: 'FreshRSS', ok: freshrssOk },
+    { label: 'Throughput', ok: !!settings.value.max_articles_per_cycle },
+  ]
 })
+
+// ── Test connection state ───────────────────────────────────────
+const testingLlm = ref(false)
+const testingFreshrss = ref(false)
+const llmTestResult = ref<{ ok: boolean; detail: string } | null>(null)
+const freshrssTestResult = ref<{ ok: boolean; detail: string } | null>(null)
+
+async function testLlm() {
+  testingLlm.value = true
+  llmTestResult.value = null
+  try {
+    const body: Record<string, string> = {
+      provider: settings.value.llm_provider || '',
+      model: settings.value.llm_model || '',
+      base_url: settings.value.llm_base_url || '',
+    }
+    // Only include api_key if user changed it (not the masked placeholder)
+    if (settings.value.llm_api_key && settings.value.llm_api_key !== '••••••••') {
+      body.api_key = settings.value.llm_api_key
+    }
+    const result = await api.post<{ ok: boolean; detail: string }>('/settings/test-llm', body)
+    llmTestResult.value = result
+  } catch (err) {
+    llmTestResult.value = { ok: false, detail: err instanceof ApiError ? err.detail : 'Test failed' }
+  } finally {
+    testingLlm.value = false
+  }
+}
+
+async function testFreshrss() {
+  testingFreshrss.value = true
+  freshrssTestResult.value = null
+  try {
+    const body: Record<string, string> = {
+      freshrss_base_url: settings.value.freshrss_base_url || '',
+      freshrss_username: settings.value.freshrss_username || '',
+    }
+    if (settings.value.freshrss_api_pass && settings.value.freshrss_api_pass !== '••••••••') {
+      body.freshrss_api_pass = settings.value.freshrss_api_pass
+    }
+    const result = await api.post<{ ok: boolean; detail: string }>('/settings/test-freshrss', body)
+    freshrssTestResult.value = result
+  } catch (err) {
+    freshrssTestResult.value = { ok: false, detail: err instanceof ApiError ? err.detail : 'Test failed' }
+  } finally {
+    testingFreshrss.value = false
+  }
+}
 
 function formatDate(iso: string): string {
   try {
@@ -545,33 +850,268 @@ onMounted(async () => {
       v-else-if="activeTab === 'config'"
       class="tab-content"
     >
-      <div
-        v-for="group in configGroups"
-        :key="group.title"
-        class="config-group"
-      >
-        <h3 class="config-group-title">{{ group.title }}</h3>
-        <div
-          v-for="field in group.fields"
-          :key="field.key"
-          class="field"
-        >
-          <label
-            :for="`config-${field.key}`"
-            class="field-label"
-          >{{ field.label }}</label>
-          <input
-            :id="`config-${field.key}`"
-            v-model="settings[field.key]"
-            class="field-input"
-            :type="field.type"
+      <!-- Status panel -->
+      <div class="status-panel">
+        <h3 class="status-title">What's configured</h3>
+        <div class="status-grid">
+          <div
+            v-for="item in configStatus"
+            :key="item.label"
+            class="status-item"
+            :class="{ 'status-item--ok': item.ok, 'status-item--missing': !item.ok }"
           >
-          <span
-            v-if="field.help"
-            class="field-help"
-          >{{ field.help }}</span>
+            <span class="status-mark">{{ item.ok ? '✓' : '✗' }}</span>
+            <span class="status-label">{{ item.label }}</span>
+          </div>
         </div>
       </div>
+
+      <!-- Auth section: special checkbox handling -->
+      <div class="config-group">
+        <h3 class="config-group-title">Authentication</h3>
+        <p class="config-group-desc">How users log in. Pick one or more methods.</p>
+        <div class="field">
+          <span class="field-label">Enabled methods</span>
+          <div class="checkbox-group">
+            <label class="checkbox-row">
+              <input
+                type="checkbox"
+                :checked="hasAuthMethod('oidc')"
+                @change="setAuthMethod('oidc', ($event.target as HTMLInputElement).checked)"
+              >
+              <span class="checkbox-text">
+                <strong>OIDC</strong>
+                <span class="field-help">Single sign-on via Authentik, Keycloak, Google, etc. Requires the OIDC section below.</span>
+              </span>
+            </label>
+            <label class="checkbox-row">
+              <input
+                type="checkbox"
+                :checked="hasAuthMethod('local')"
+                @change="setAuthMethod('local', ($event.target as HTMLInputElement).checked)"
+              >
+              <span class="checkbox-text">
+                <strong>Local password</strong>
+                <span class="field-help">Username + password stored in piqued's database. The simplest option for a single-user homelab.</span>
+              </span>
+            </label>
+            <label class="checkbox-row">
+              <input
+                type="checkbox"
+                :checked="hasAuthMethod('header')"
+                @change="setAuthMethod('header', ($event.target as HTMLInputElement).checked)"
+              >
+              <span class="checkbox-text">
+                <strong>Header (forward auth)</strong>
+                <span class="field-help">Trust an X-authentik-username header from a reverse proxy. Only enable if a trusted proxy IP is set below — otherwise anyone can spoof the header.</span>
+              </span>
+            </label>
+          </div>
+        </div>
+        <template
+          v-for="field in visibleFields(CONFIG_SECTIONS[0])"
+          :key="field.key"
+        >
+          <div class="field">
+            <label
+              :for="`config-${field.key}`"
+              class="field-label"
+            >{{ field.label }}</label>
+            <div
+              v-if="field.type === 'password'"
+              class="password-row"
+            >
+              <input
+                :id="`config-${field.key}`"
+                v-model="settings[field.key]"
+                class="field-input"
+                :type="revealedPasswords.has(field.key) ? 'text' : 'password'"
+                autocomplete="off"
+              >
+              <button
+                type="button"
+                class="btn btn--small password-toggle"
+                :aria-label="revealedPasswords.has(field.key) ? 'Hide value' : 'Show value'"
+                @click="togglePasswordReveal(field.key)"
+              >
+                {{ revealedPasswords.has(field.key) ? 'Hide' : 'Show' }}
+              </button>
+            </div>
+            <input
+              v-else
+              :id="`config-${field.key}`"
+              v-model="settings[field.key]"
+              class="field-input"
+              :type="field.type || 'text'"
+            >
+            <span
+              v-if="field.help"
+              class="field-help"
+            >{{ field.help }}</span>
+          </div>
+        </template>
+      </div>
+
+      <!-- Remaining sections, declarative -->
+      <template
+        v-for="section in visibleSections"
+        :key="section.id"
+      >
+        <div
+          v-if="section.id !== 'auth'"
+          class="config-group"
+        >
+          <h3 class="config-group-title">{{ section.title }}</h3>
+          <p
+            v-if="section.description"
+            class="config-group-desc"
+          >
+            {{ section.description }}
+          </p>
+
+          <!-- Test buttons live inside the relevant sections -->
+          <div
+            v-if="section.id === 'llm_primary'"
+            class="test-row"
+          >
+            <button
+              type="button"
+              class="btn"
+              :disabled="testingLlm"
+              @click="testLlm"
+            >
+              {{ testingLlm ? 'Testing...' : 'Test LLM connection' }}
+            </button>
+            <span
+              v-if="llmTestResult"
+              class="test-result"
+              :class="{ 'test-result--ok': llmTestResult.ok, 'test-result--fail': !llmTestResult.ok }"
+            >
+              {{ llmTestResult.detail }}
+            </span>
+          </div>
+          <div
+            v-if="section.id === 'freshrss'"
+            class="test-row"
+          >
+            <button
+              type="button"
+              class="btn"
+              :disabled="testingFreshrss"
+              @click="testFreshrss"
+            >
+              {{ testingFreshrss ? 'Testing...' : 'Test FreshRSS connection' }}
+            </button>
+            <span
+              v-if="freshrssTestResult"
+              class="test-result"
+              :class="{ 'test-result--ok': freshrssTestResult.ok, 'test-result--fail': !freshrssTestResult.ok }"
+            >
+              {{ freshrssTestResult.detail }}
+            </span>
+          </div>
+
+          <div
+            v-for="field in visibleFields(section)"
+            :key="field.key"
+            class="field"
+          >
+            <label
+              :for="`config-${field.key}`"
+              class="field-label"
+            >{{ field.label }}</label>
+
+            <select
+              v-if="field.type === 'select'"
+              :id="`config-${field.key}`"
+              v-model="settings[field.key]"
+              class="field-select"
+            >
+              <option
+                v-for="opt in field.options"
+                :key="opt.value"
+                :value="opt.value"
+              >
+                {{ opt.label }}
+              </option>
+            </select>
+
+            <div
+              v-else-if="field.type === 'password'"
+              class="password-row"
+            >
+              <input
+                :id="`config-${field.key}`"
+                v-model="settings[field.key]"
+                class="field-input"
+                :type="revealedPasswords.has(field.key) ? 'text' : 'password'"
+                autocomplete="off"
+              >
+              <button
+                type="button"
+                class="btn btn--small password-toggle"
+                :aria-label="revealedPasswords.has(field.key) ? 'Hide value' : 'Show value'"
+                @click="togglePasswordReveal(field.key)"
+              >
+                {{ revealedPasswords.has(field.key) ? 'Hide' : 'Show' }}
+              </button>
+            </div>
+
+            <input
+              v-else
+              :id="`config-${field.key}`"
+              v-model="settings[field.key]"
+              class="field-input"
+              :type="field.type || 'text'"
+            >
+            <span
+              v-if="field.help"
+              class="field-help"
+            >{{ field.help }}</span>
+          </div>
+        </div>
+
+        <!-- Throughput section is rendered separately right after FreshRSS -->
+        <div
+          v-if="section.id === 'freshrss'"
+          class="config-group"
+        >
+          <h3 class="config-group-title">Throughput</h3>
+          <p class="config-group-desc">How fast piqued chews through articles. Pick a preset, or switch to Custom in the advanced section.</p>
+          <div class="preset-grid">
+            <button
+              v-for="(preset, name) in THROUGHPUT_PRESETS"
+              :key="name"
+              type="button"
+              class="preset-card"
+              :class="{ 'preset-card--active': activeThroughputPreset === name }"
+              @click="applyThroughputPreset(name)"
+            >
+              <span class="preset-name">{{ preset.label }}</span>
+              <span class="preset-desc">{{ preset.description }}</span>
+            </button>
+            <div
+              class="preset-card preset-card--info"
+              :class="{ 'preset-card--active': activeThroughputPreset === 'custom' }"
+            >
+              <span class="preset-name">Custom</span>
+              <span class="preset-desc">Edit individual values in Processing — advanced below.</span>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- Advanced toggle -->
+      <div class="advanced-toggle">
+        <button
+          type="button"
+          class="btn"
+          @click="showAdvanced = !showAdvanced"
+        >
+          {{ showAdvanced ? 'Hide advanced settings' : 'Show advanced settings' }}
+        </button>
+      </div>
+
       <div class="field-row">
         <span />
         <button
@@ -929,16 +1469,192 @@ onMounted(async () => {
 }
 
 .config-group {
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.75rem;
 }
 
 .config-group-title {
   font-size: 0.8125rem;
   font-weight: 600;
   color: var(--pq-text);
-  margin: 0 0 0.5rem;
+  margin: 0 0 0.25rem;
   padding-bottom: 0.25rem;
   border-bottom: 1px solid var(--pq-border);
+}
+
+.config-group-desc {
+  font-size: 0.75rem;
+  color: var(--pq-muted);
+  margin: 0 0 0.75rem;
+  line-height: 1.4;
+}
+
+.status-panel {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--pq-border);
+  border-radius: var(--pq-radius);
+  background: color-mix(in srgb, var(--pq-accent) 5%, transparent);
+  margin-bottom: 1.5rem;
+}
+
+.status-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--pq-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 0.5rem;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.375rem 1rem;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.status-mark {
+  font-weight: 700;
+  font-size: 0.875rem;
+  width: 1rem;
+  text-align: center;
+}
+
+.status-item--ok .status-mark {
+  color: var(--pq-success);
+}
+
+.status-item--missing .status-mark {
+  color: var(--pq-danger);
+}
+
+.status-label {
+  color: var(--pq-text);
+}
+
+.checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+}
+
+.checkbox-row {
+  display: flex;
+  gap: 0.625rem;
+  align-items: flex-start;
+  cursor: pointer;
+}
+
+.checkbox-row input[type="checkbox"] {
+  margin-top: 0.1875rem;
+  flex-shrink: 0;
+}
+
+.checkbox-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  font-size: 0.8125rem;
+  color: var(--pq-text);
+}
+
+.checkbox-text strong {
+  font-weight: 600;
+}
+
+.password-row {
+  display: flex;
+  gap: 0.375rem;
+  align-items: stretch;
+}
+
+.password-row .field-input {
+  flex: 1;
+}
+
+.password-toggle {
+  flex-shrink: 0;
+}
+
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.preset-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--pq-border);
+  border-radius: var(--pq-radius);
+  background: var(--pq-bg);
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.preset-card:hover {
+  border-color: var(--pq-muted);
+}
+
+.preset-card--active {
+  border-color: var(--pq-accent);
+  background: color-mix(in srgb, var(--pq-accent) 8%, var(--pq-bg));
+}
+
+.preset-card--info {
+  cursor: default;
+}
+
+.preset-name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--pq-text);
+}
+
+.preset-desc {
+  font-size: 0.6875rem;
+  color: var(--pq-muted);
+  line-height: 1.4;
+}
+
+.test-row {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.test-result {
+  font-size: 0.75rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.test-result--ok {
+  color: var(--pq-success);
+}
+
+.test-result--fail {
+  color: var(--pq-danger);
+}
+
+.advanced-toggle {
+  display: flex;
+  justify-content: center;
+  margin: 1rem 0;
+  padding-top: 1rem;
+  border-top: 1px dashed var(--pq-border);
 }
 
 .confirm-group {

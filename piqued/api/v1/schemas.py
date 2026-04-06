@@ -136,6 +136,11 @@ class SettingsResponse(BaseModel):
     is_admin: bool
 
 
+class ConnectionTestResult(BaseModel):
+    ok: bool
+    detail: str
+
+
 # --- Processing log ---
 
 

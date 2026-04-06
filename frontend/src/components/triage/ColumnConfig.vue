@@ -69,7 +69,9 @@ const availableTiers = computed(() => {
           <h3
             id="column-config-title"
             class="config-title"
-          >Configure columns</h3>
+          >
+            Configure columns
+          </h3>
           <button
             class="config-close"
             aria-label="Close"

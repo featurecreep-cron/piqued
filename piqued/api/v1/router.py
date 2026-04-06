@@ -22,6 +22,7 @@ from piqued.api.v1.schemas import (
     ArticleSummary,
     ChangeRoleRequest,
     ClickThroughRequest,
+    ConnectionTestResult,
     CreateUserRequest,
     DownweightRequest,
     FeedbackRequest,
@@ -401,6 +402,87 @@ async def save_settings_api(
 
     data = await get_settings_data(admin, session)
     return SettingsResponse(settings=data["current"], is_admin=data["is_admin"])
+
+
+@router.post("/settings/test-llm", response_model=ConnectionTestResult)
+async def test_llm_connection(
+    body: dict[str, str],
+    admin: User = Depends(require_api_admin),
+):
+    """Test an LLM provider connection with a tiny prompt.
+
+    Body may include provider, model, api_key, base_url. Empty/missing
+    fields fall back to current saved primary LLM config.
+    """
+    from piqued.llm import create_client
+
+    primary = config.get_llm_config("primary")
+    provider = (body.get("provider") or primary["provider"]).strip()
+    model = (body.get("model") or primary["model"]).strip()
+    api_key = body.get("api_key") or primary["api_key"]
+    base_url = (body.get("base_url") or primary["base_url"]).strip()
+
+    if not provider or not model:
+        return ConnectionTestResult(ok=False, detail="Provider and model required")
+    if provider != "ollama" and not api_key:
+        return ConnectionTestResult(
+            ok=False, detail="API key required for this provider"
+        )
+
+    try:
+        client = create_client(
+            provider=provider, model=model, api_key=api_key, base_url=base_url
+        )
+        resp = await client.generate(
+            "Reply with the single word: ok",
+            temperature=0.0,
+            max_tokens=8,
+        )
+        text = (resp.text or "").strip()
+        return ConnectionTestResult(
+            ok=True,
+            detail=f"{provider}/{model} responded: {text[:60] or '(empty)'}",
+        )
+    except Exception as e:
+        return ConnectionTestResult(
+            ok=False, detail=f"{type(e).__name__}: {str(e)[:200]}"
+        )
+
+
+@router.post("/settings/test-freshrss", response_model=ConnectionTestResult)
+async def test_freshrss_connection(
+    body: dict[str, str],
+    admin: User = Depends(require_api_admin),
+):
+    """Test FreshRSS API auth + subscription fetch."""
+    from piqued.ingestion.freshrss import FreshRSSClient
+
+    base_url = (
+        body.get("freshrss_base_url") or config.get("freshrss_base_url")
+    ).strip()
+    username = (
+        body.get("freshrss_username") or config.get("freshrss_username")
+    ).strip()
+    api_pass = body.get("freshrss_api_pass") or config.get("freshrss_api_pass")
+
+    if not base_url or not username or not api_pass:
+        return ConnectionTestResult(
+            ok=False, detail="URL, username, and API password required"
+        )
+
+    client = FreshRSSClient(base_url=base_url, username=username, api_pass=api_pass)
+    try:
+        await client._authenticate()
+        subs = await client.get_subscriptions()
+        return ConnectionTestResult(
+            ok=True, detail=f"Authenticated. {len(subs)} subscriptions visible."
+        )
+    except Exception as e:
+        return ConnectionTestResult(
+            ok=False, detail=f"{type(e).__name__}: {str(e)[:200]}"
+        )
+    finally:
+        await client.close()
 
 
 # ── Processing log ──────────────────────────────────────────────

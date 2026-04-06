@@ -47,7 +47,7 @@ DEFAULTS = {
     "daily_token_budget": "500000",
     "max_retries": "3",
     "backlog_order": "newest_first",
-    "max_articles_per_cycle": "3",
+    "max_articles_per_cycle": "25",
     # Interest model
     "confidence_threshold": "0.4",
     "surprise_surface_pct": "0.10",

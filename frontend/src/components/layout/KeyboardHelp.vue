@@ -43,7 +43,9 @@ const triageShortcuts = [
           <h2
             id="keyboard-help-title"
             class="help-title"
-          >Keyboard shortcuts</h2>
+          >
+            Keyboard shortcuts
+          </h2>
           <button
             class="help-close"
             aria-label="Close"
