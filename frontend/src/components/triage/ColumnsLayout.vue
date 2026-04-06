@@ -73,6 +73,17 @@ function removeColumn(index: number) {
   saveColumns(columns.value)
 }
 
+function moveColumn(payload: { index: number; direction: -1 | 1 }) {
+  const { index, direction } = payload
+  const target = index + direction
+  if (target < 0 || target >= columns.value.length) return
+  const [moved] = columns.value.splice(index, 1)
+  columns.value.splice(target, 0, moved)
+  if (activeColumnIndex.value === index) activeColumnIndex.value = target
+  else if (activeColumnIndex.value === target) activeColumnIndex.value = index
+  saveColumns(columns.value)
+}
+
 async function handleVote(sectionId: number, rating: 1 | -1) {
   await feedback.vote(sectionId, rating)
 }
@@ -149,6 +160,7 @@ onUnmounted(() => window.removeEventListener('piqued:select-focused', onSelectFo
       :columns="columns"
       @add="addColumn"
       @remove="removeColumn"
+      @move="moveColumn"
       @close="configVisible = false"
     />
   </div>

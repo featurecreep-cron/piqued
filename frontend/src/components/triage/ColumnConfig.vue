@@ -17,6 +17,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   add: [col: ColumnDef]
   remove: [index: number]
+  move: [payload: { index: number; direction: -1 | 1 }]
   close: []
 }>()
 
@@ -90,13 +91,31 @@ const availableTiers = computed(() => {
             class="config-item"
           >
             <span class="config-label">{{ col.label }}</span>
-            <button
-              class="config-remove"
-              :aria-label="`Remove ${col.label} column`"
-              @click="emit('remove', idx)"
-            >
-              &times;
-            </button>
+            <div class="config-item-actions">
+              <button
+                class="config-move"
+                :aria-label="`Move ${col.label} left`"
+                :disabled="idx === 0"
+                @click="emit('move', { index: idx, direction: -1 })"
+              >
+                &uarr;
+              </button>
+              <button
+                class="config-move"
+                :aria-label="`Move ${col.label} right`"
+                :disabled="idx === columns.length - 1"
+                @click="emit('move', { index: idx, direction: 1 })"
+              >
+                &darr;
+              </button>
+              <button
+                class="config-remove"
+                :aria-label="`Remove ${col.label} column`"
+                @click="emit('remove', idx)"
+              >
+                &times;
+              </button>
+            </div>
           </div>
           <p
             v-if="!columns.length"
@@ -222,6 +241,31 @@ const availableTiers = computed(() => {
 .config-label {
   font-size: 0.8125rem;
   color: var(--pq-text);
+}
+
+.config-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+}
+
+.config-move {
+  background: none;
+  border: none;
+  color: var(--pq-muted);
+  cursor: pointer;
+  font-size: 0.875rem;
+  padding: 0 0.25rem;
+  line-height: 1;
+}
+
+.config-move:hover:not(:disabled) {
+  color: var(--pq-text);
+}
+
+.config-move:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
 }
 
 .config-remove {
