@@ -63,14 +63,23 @@ test.describe('UAT: Triage — Reader Layout', () => {
     await expect(listCount).toBeVisible()
   })
 
-  test('collapse button toggles the nav pane', async ({ page }) => {
+  test('collapse button hides the nav pane', async ({ page }) => {
     await expect(page.locator('.reader-nav')).toBeVisible()
     const collapseBtn = page.locator('.collapse-btn')
-    // Detail pane may overlap the button at narrow viewports
-    await collapseBtn.click({ force: true })
+    await collapseBtn.click()
     await expect(page.locator('.reader-nav')).not.toBeVisible()
-    // Button label changes to indicate nav can be restored
     await expect(collapseBtn).toHaveAttribute('aria-label', 'Show navigation')
+  })
+
+  test.fixme('collapse button restores nav pane when clicked again', async ({ page }) => {
+    // BUG: After collapsing nav, the detail pane overlaps the collapse button,
+    // making it unclickable. The list-header z-index doesn't create a high
+    // enough stacking context to sit above the adjacent grid cell's content.
+    // Fix requires reworking the reader grid layout to properly contain each cell.
+    const collapseBtn = page.locator('.collapse-btn')
+    await collapseBtn.click()
+    await collapseBtn.click()
+    await expect(page.locator('.reader-nav')).toBeVisible()
   })
 
   test('voting works in reader detail pane', async ({ page }) => {
