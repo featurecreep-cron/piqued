@@ -1,5 +1,5 @@
 """LLM-driven content classification — determines if content is a full article,
-teaser, paywall page, error page, or login wall."""
+teaser, paywall page, error page, login wall, or bot/captcha challenge."""
 
 import json
 import logging
@@ -25,6 +25,7 @@ Classify this content into exactly one category:
 - "paywall_page": This is a paywall notice, subscription prompt, or access-denied page
 - "error_page": This is a 404, server error, or other technical error page
 - "login_wall": This is a login/authentication required page
+- "bot_challenge": This is a CAPTCHA, bot-detection page, or "verify you are human" challenge. Look for phrases like "unusual network activity", "verify you're not a robot", "checking your browser", "Cloudflare", "complete the security check", or short pages whose only purpose is to prove the user is human.
 
 Respond with JSON: {{"classification": "<category>", "confidence": <0.0-1.0>, "reason": "<brief explanation>"}}"""
 
@@ -47,7 +48,8 @@ async def classify_content(
 
     Returns:
         Tuple of (classification, confidence, tokens_used).
-        classification is one of: full_article, teaser, paywall_page, error_page, login_wall.
+        classification is one of: full_article, teaser, paywall_page, error_page,
+        login_wall, bot_challenge.
     """
     # Truncate content for classification — don't need the full article
     truncated = content_text[:2000]
@@ -76,7 +78,14 @@ async def classify_content(
         reason = data.get("reason", "")
 
         # Validate classification
-        valid = {"full_article", "teaser", "paywall_page", "error_page", "login_wall"}
+        valid = {
+            "full_article",
+            "teaser",
+            "paywall_page",
+            "error_page",
+            "login_wall",
+            "bot_challenge",
+        }
         if classification not in valid:
             logger.warning(
                 "Invalid classification '%s', defaulting to full_article",
@@ -125,6 +134,7 @@ def update_feed_quality(
         "paywall_page": "paywall",
         "error_page": "paywall",
         "login_wall": "paywall",
+        "bot_challenge": "paywall",
     }
     mapped = quality_map.get(new_classification, "unknown")
 

@@ -298,7 +298,12 @@ async def _process_article(article_id: int) -> str:
                     feed.quality_streak = new_streak
 
                 # Skip segmentation for non-articles
-                if classification in ("paywall_page", "error_page", "login_wall"):
+                if classification in (
+                    "paywall_page",
+                    "error_page",
+                    "login_wall",
+                    "bot_challenge",
+                ):
                     article.status = ArticleStatus.skipped_paywall
                     await session.commit()
                     return "skipped"
