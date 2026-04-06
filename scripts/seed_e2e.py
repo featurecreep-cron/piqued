@@ -315,12 +315,12 @@ async def seed():
         await session.commit()
 
     print("E2E database seeded successfully")
-    print(f"  Admin: testuser / testpass")
-    print(f"  User:  reader / userpass")
-    print(f"  Feeds: 3 (2 active, 1 inactive)")
-    print(f"  Articles: 4 (3 today, 1 yesterday)")
-    print(f"  Sections: 7 (3 above, 1 surprise, 2 below, 1 yesterday)")
-    print(f"  Processing log: 6 entries")
+    print("  Admin: testuser / testpass")
+    print("  User:  reader / userpass")
+    print("  Feeds: 3 (2 active, 1 inactive)")
+    print("  Articles: 4 (3 today, 1 yesterday)")
+    print("  Sections: 7 (3 above, 1 surprise, 2 below, 1 yesterday)")
+    print("  Processing log: 6 entries")
 
 
 if __name__ == "__main__":
