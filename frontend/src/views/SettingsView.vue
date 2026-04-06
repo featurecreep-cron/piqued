@@ -107,7 +107,7 @@ const THROUGHPUT_PRESETS: Record<string, ThroughputPreset> = {
   },
   balanced: {
     label: 'Balanced',
-    description: '25 articles every 15 minutes, 3 in parallel, 500K tokens/day. Good default for most homelabs.',
+    description: '25 articles every 15 minutes, 3 in parallel, 500K tokens/day. The right starting point for most users.',
     values: {
       max_articles_per_cycle: '25',
       feed_poll_interval_minutes: '15',
@@ -892,7 +892,7 @@ onMounted(async () => {
               >
               <span class="checkbox-text">
                 <strong>Local password</strong>
-                <span class="field-help">Username + password stored in piqued's database. The simplest option for a single-user homelab.</span>
+                <span class="field-help">Username + password stored in piqued's database. The simplest option if you don't already have a single sign-on provider.</span>
               </span>
             </label>
             <label class="checkbox-row">
@@ -1572,14 +1572,18 @@ onMounted(async () => {
   display: flex;
   gap: 0.375rem;
   align-items: stretch;
+  width: 100%;
 }
 
 .password-row .field-input {
-  flex: 1;
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
 }
 
 .password-toggle {
-  flex-shrink: 0;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .preset-grid {

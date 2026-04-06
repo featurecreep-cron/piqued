@@ -18,7 +18,7 @@ DATABASE_URL = f"sqlite+aiosqlite:///{DATABASE_PATH}"
 # These are the defaults used when no DB setting exists AND no env var is set.
 DEFAULTS = {
     # Auth
-    "auth_methods": "oidc,local,header",  # comma-separated enabled methods
+    "auth_methods": "local",  # comma-separated enabled methods
     "session_secret_key": "",  # auto-generated on first boot
     "trusted_proxy_ip": "",  # IP allowed to send X-authentik-username headers
     # OIDC (Authentik)
