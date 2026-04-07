@@ -85,6 +85,21 @@ class FreshRSSClient:
         data = await self._api_get("reader/api/0/subscription/list", {"output": "json"})
         return data.get("subscriptions", [])
 
+    async def get_unread_counts(self) -> dict[str, int]:
+        """Get unread item counts per feed stream.
+
+        Returns a dict mapping GReader stream_id (matches Feed.freshrss_feed_id)
+        to unread count. Streams not in the response have no unread items.
+        """
+        data = await self._api_get("reader/api/0/unread-count", {"output": "json"})
+        counts: dict[str, int] = {}
+        for entry in data.get("unreadcounts", []):
+            stream_id = entry.get("id")
+            count = entry.get("count")
+            if stream_id and isinstance(count, int):
+                counts[stream_id] = count
+        return counts
+
     async def get_stream_items(
         self,
         stream_id: str,

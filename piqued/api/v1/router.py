@@ -49,9 +49,6 @@ from piqued.models import (
     ApiKey,
     Article,
     Feed,
-    Feedback,
-    FeedbackSource,
-    Section,
     User,
     UserProfile,
 )
@@ -128,78 +125,32 @@ async def list_feeds(
     user: User = Depends(get_api_user),
     session: AsyncSession = Depends(get_session),
 ):
-    # Per-feed article counts via aggregated queries (avoid async lazy-loads).
+    # The feeds page is about source content. `unread_count` reflects
+    # FreshRSS's unread state (articles in the source feed the user
+    # hasn't marked read upstream), NOT piqued's feedback state.
     #
-    # Three numbers per feed:
-    #
-    # - article_count: total articles ever ingested for this feed
-    # - unread_count: articles with NO feedback rows from this user on any of
-    #   their sections (never click-throughed, never voted)
-    # - untriaged_count: articles with no `explicit` feedback rows from this
-    #   user on any section (may have click-throughed but never thumbs up/down)
-    #
-    # Both unread/untriaged restrict to processed articles (status=complete) so
-    # that pending/skipped articles don't inflate the "you haven't read this"
-    # count for things you can't actually read.
-    from piqued.models import ArticleStatus
-    from sqlalchemy import and_, distinct, func
+    # Piqued has no local mirror of FreshRSS read state, so we query
+    # the GReader unread-count endpoint at request time and merge by
+    # `Feed.freshrss_feed_id`. If FreshRSS is unreachable, unread_count
+    # is left as None and the UI omits the badge.
+    from sqlalchemy import func
 
-    # Total article count per feed
+    from piqued.ingestion.freshrss import FreshRSSClient
+
     total_result = await session.execute(
         select(Article.feed_id, func.count(Article.id)).group_by(Article.feed_id)
     )
     total_counts = dict(total_result.all())
 
-    # Articles with at least one feedback row of any kind from this user
-    seen_subq = (
-        select(distinct(Article.id))
-        .select_from(Article)
-        .join(Section, Section.article_id == Article.id)
-        .join(
-            Feedback,
-            and_(
-                Feedback.section_id == Section.id,
-                Feedback.user_id == user.id,
-            ),
-        )
-        .subquery()
-    )
-
-    unread_result = await session.execute(
-        select(Article.feed_id, func.count(Article.id))
-        .where(
-            Article.status == ArticleStatus.complete,
-            ~Article.id.in_(select(seen_subq)),
-        )
-        .group_by(Article.feed_id)
-    )
-    unread_counts = dict(unread_result.all())
-
-    # Articles with at least one *explicit* feedback row from this user
-    triaged_subq = (
-        select(distinct(Article.id))
-        .select_from(Article)
-        .join(Section, Section.article_id == Article.id)
-        .join(
-            Feedback,
-            and_(
-                Feedback.section_id == Section.id,
-                Feedback.user_id == user.id,
-                Feedback.source == FeedbackSource.explicit,
-            ),
-        )
-        .subquery()
-    )
-
-    untriaged_result = await session.execute(
-        select(Article.feed_id, func.count(Article.id))
-        .where(
-            Article.status == ArticleStatus.complete,
-            ~Article.id.in_(select(triaged_subq)),
-        )
-        .group_by(Article.feed_id)
-    )
-    untriaged_counts = dict(untriaged_result.all())
+    unread_by_stream: dict[str, int] | None = None
+    try:
+        client = FreshRSSClient()
+        try:
+            unread_by_stream = await client.get_unread_counts()
+        finally:
+            await client.close()
+    except Exception as e:  # noqa: BLE001 — best-effort enrichment
+        logger.warning("FreshRSS unread-count unavailable: %s", e)
 
     data = await get_feeds_list(session)
     feeds = []
@@ -207,6 +158,12 @@ async def list_feeds(
     for cat, cat_feeds in data["categories"].items():
         categories[cat] = []
         for feed in cat_feeds:
+            # FreshRSS omits zero-unread streams from the response, so a
+            # missing key after a successful call means 0, not unknown.
+            if unread_by_stream is None:
+                unread: int | None = None
+            else:
+                unread = unread_by_stream.get(feed.freshrss_feed_id, 0)
             feeds.append(
                 FeedItem(
                     id=feed.id,
@@ -216,8 +173,7 @@ async def list_feeds(
                     active=feed.active,
                     content_quality=feed.content_quality,
                     article_count=total_counts.get(feed.id, 0),
-                    unread_count=unread_counts.get(feed.id, 0),
-                    untriaged_count=untriaged_counts.get(feed.id, 0),
+                    unread_count=unread,
                 )
             )
             categories[cat].append(feed.id)

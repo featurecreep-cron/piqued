@@ -35,8 +35,7 @@ export interface FeedItem {
   active: boolean
   content_quality: string
   article_count: number
-  unread_count?: number
-  untriaged_count?: number
+  unread_count?: number | null
 }
 
 export interface FeedList {

@@ -7,8 +7,10 @@ const props = defineProps<{
   isAdmin: boolean
 }>()
 
+const hasUnread = computed(
+  () => props.feed.unread_count !== null && props.feed.unread_count !== undefined,
+)
 const unreadCount = computed(() => props.feed.unread_count ?? 0)
-const untriagedCount = computed(() => props.feed.untriaged_count ?? 0)
 
 const emit = defineEmits<{
   toggle: [feedId: number]
@@ -42,16 +44,12 @@ function qualityColor(quality: string): string {
       <div class="feed-meta">
         <span class="feed-category">{{ feed.category }}</span>
         <span
+          v-if="hasUnread"
           class="feed-count"
           :class="{ 'has-unread': unreadCount > 0 }"
-          :title="`${unreadCount} unread (no interaction yet)`"
+          :title="`${unreadCount} unread at source (FreshRSS)`"
         >{{ unreadCount }} unread</span>
-        <span
-          class="feed-count"
-          :class="{ 'has-untriaged': untriagedCount > 0 }"
-          :title="`${untriagedCount} untriaged (no thumbs-up/down yet)`"
-        >{{ untriagedCount }} untriaged</span>
-        <span class="feed-articles">{{ feed.article_count }} total</span>
+        <span class="feed-articles">{{ feed.article_count }} ingested</span>
         <span
           class="feed-quality"
           :style="{ color: qualityColor(feed.content_quality) }"
@@ -117,10 +115,6 @@ function qualityColor(quality: string): string {
 .feed-count.has-unread {
   color: var(--pq-accent);
   font-weight: 500;
-}
-
-.feed-count.has-untriaged {
-  color: var(--pq-text);
 }
 
 .feed-toggle {
