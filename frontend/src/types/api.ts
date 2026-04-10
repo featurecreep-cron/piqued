@@ -208,3 +208,22 @@ export interface UserPreferencesUpdate {
   items_per_page?: number | null
   column_config?: string[] | null
 }
+
+export interface BootstrapIngestRequest {
+  feed_ids: number[]
+}
+
+export interface BootstrapIngestResult {
+  ok: boolean
+  section_count: number
+}
+
+export interface BootstrapCompleteResult {
+  ok: boolean
+  sections_scored: number
+}
+
+export interface BootstrapStatusResponse {
+  bootstrap_complete: boolean
+  has_sections: boolean
+}

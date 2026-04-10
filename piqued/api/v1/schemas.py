@@ -247,3 +247,25 @@ class UserPreferencesUpdate(BaseModel):
     layout_mode: str | None = None
     items_per_page: int | None = None
     column_config: list[str] | None = None
+
+
+# --- Bootstrap (calibration wizard) ---
+
+
+class BootstrapIngestRequest(BaseModel):
+    feed_ids: list[int]
+
+
+class BootstrapIngestResult(BaseModel):
+    ok: bool
+    section_count: int
+
+
+class BootstrapCompleteResult(BaseModel):
+    ok: bool
+    sections_scored: int
+
+
+class BootstrapStatusResponse(BaseModel):
+    bootstrap_complete: bool
+    has_sections: bool

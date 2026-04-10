@@ -213,6 +213,23 @@ async def _trigger_synthesis(user_id: int):
                         profile.profile_version,
                         tokens,
                     )
+
+                    # Re-score recent content with updated profile
+                    try:
+                        from piqued.processing.pipeline import score_recent_for_user
+
+                        scored = await score_recent_for_user(user_id, days=7)
+                        logger.info(
+                            "Post-synthesis re-score for user %d: %d sections",
+                            user_id,
+                            scored,
+                        )
+                    except Exception as score_err:
+                        logger.warning(
+                            "Post-synthesis re-score failed for user %d: %s",
+                            user_id,
+                            score_err,
+                        )
             finally:
                 if hasattr(client, "close"):
                     await client.close()

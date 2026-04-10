@@ -20,6 +20,10 @@ from piqued.api.v1.schemas import (
     ArticleDetail,
     ArticleSection,
     ArticleSummary,
+    BootstrapCompleteResult,
+    BootstrapIngestRequest,
+    BootstrapIngestResult,
+    BootstrapStatusResponse,
     ChangeRoleRequest,
     ClickThroughRequest,
     ConnectionTestResult,
@@ -48,7 +52,9 @@ from piqued.db import get_session
 from piqued.models import (
     ApiKey,
     Article,
+    ArticleStatus,
     Feed,
+    Section,
     User,
     UserProfile,
 )
@@ -739,6 +745,127 @@ async def change_role_api(
         email=target.email,
         role=target.role,
     )
+
+
+# ── Bootstrap (calibration wizard) ──────────────────────────────
+
+
+@router.get("/bootstrap/status", response_model=BootstrapStatusResponse)
+async def bootstrap_status(
+    user: User = Depends(get_api_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Check whether the user has completed bootstrap calibration."""
+    import json
+
+    from sqlalchemy import func
+
+    prefs = json.loads(user.preferences or "{}")
+    bootstrap_complete = prefs.get("bootstrap_complete", False)
+
+    section_count = await session.scalar(
+        select(func.count(Section.id))
+        .join(Article, Section.article_id == Article.id)
+        .where(Article.status == ArticleStatus.complete)
+    )
+    return BootstrapStatusResponse(
+        bootstrap_complete=bootstrap_complete,
+        has_sections=(section_count or 0) > 0,
+    )
+
+
+@router.get("/bootstrap/sample", response_model=list[SectionItem])
+async def bootstrap_sample(
+    user: User = Depends(get_api_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Return ~5 sections from recently ingested content for calibration."""
+    from sqlalchemy.orm import joinedload
+
+    # Get one recent completed article per active feed, then pick first section
+    active_feeds_result = await session.execute(
+        select(Feed.id).where(Feed.active.is_(True))
+    )
+    active_feed_ids = [r[0] for r in active_feeds_result]
+
+    samples: list[SectionItem] = []
+    for feed_id in active_feed_ids:
+        if len(samples) >= 5:
+            break
+
+        # Most recent completed article for this feed
+        article_result = await session.execute(
+            select(Article)
+            .options(joinedload(Article.feed), joinedload(Article.sections))
+            .where(
+                Article.feed_id == feed_id,
+                Article.status == ArticleStatus.complete,
+            )
+            .order_by(Article.published_at.desc())
+            .limit(1)
+        )
+        article = article_result.scalars().first()
+        if not article or not article.sections:
+            continue
+
+        section = article.sections[0]
+        samples.append(
+            SectionItem(
+                id=section.id,
+                article_id=article.id,
+                article_title=article.title,
+                feed_title=article.feed.title if article.feed else "",
+                heading=section.heading,
+                summary=section.summary,
+                topic_tags=section.tags_list,
+                score=0.5,
+                reasoning=section.reasoning,
+                is_surprise=False,
+                has_humor=section.has_humor,
+                has_surprise_data=section.has_surprise_data,
+                has_actionable_advice=section.has_actionable_advice,
+                article_url=article.url,
+                published_at=article.published_at,
+            )
+        )
+
+    return samples
+
+
+@router.post("/bootstrap/ingest", response_model=BootstrapIngestResult)
+async def bootstrap_ingest(
+    body: BootstrapIngestRequest,
+    user: User = Depends(get_api_user),
+):
+    """Ingest articles from selected calibration feeds on demand."""
+    from piqued.processing.pipeline import ingest_feeds
+
+    if not body.feed_ids or len(body.feed_ids) > 10:
+        raise HTTPException(status_code=422, detail="Select between 1 and 10 feeds")
+
+    section_count = await ingest_feeds(body.feed_ids, max_per_feed=2)
+    return BootstrapIngestResult(ok=True, section_count=section_count)
+
+
+@router.post("/bootstrap/complete", response_model=BootstrapCompleteResult)
+async def bootstrap_complete(
+    user: User = Depends(get_api_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Score recent content for user and mark bootstrap as complete."""
+    import json
+
+    from piqued.processing.pipeline import score_recent_for_user
+
+    sections_scored = await score_recent_for_user(user.id, days=7)
+
+    # Mark bootstrap complete in user preferences
+    prefs = json.loads(user.preferences or "{}")
+    prefs["bootstrap_complete"] = True
+    user.preferences = json.dumps(prefs)
+    await session.commit()
+
+    return BootstrapCompleteResult(ok=True, sections_scored=sections_scored)
 
 
 # ── API keys ────────────────────────────────────────────────────

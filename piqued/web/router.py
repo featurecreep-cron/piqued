@@ -130,4 +130,5 @@ async def onboarding_activate_feeds(
         "Onboarding complete: user=%s activated=%d feeds", user.username, activated
     )
 
-    return RedirectResponse(url="/", status_code=303)
+    # Redirect to bootstrap calibration (the SPA handles this route)
+    return RedirectResponse(url="/bootstrap", status_code=303)

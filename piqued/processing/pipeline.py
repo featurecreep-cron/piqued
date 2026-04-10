@@ -454,10 +454,214 @@ async def _log(
         logger.error("Failed to write processing log: %s", e)
 
 
+async def score_recent_for_user(user_id: int, days: int = 1) -> int:
+    """Score unscored sections for a specific user within the given time range.
+
+    Args:
+        user_id: User to score for.
+        days: Number of days back to look for unscored sections (0 = today only).
+
+    Returns:
+        Number of sections scored.
+    """
+    from piqued.models import UserProfile
+
+    async with async_session() as session:
+        profile = await session.get(UserProfile, user_id)
+        if not profile:
+            return 0
+
+        return await _score_sections_for_profile(session, profile, days=days)
+
+
+async def _score_sections_for_profile(
+    session: AsyncSession, profile, days: int = 0
+) -> int:
+    """Score unscored sections for a single user profile.
+
+    Args:
+        session: Active DB session.
+        profile: UserProfile instance.
+        days: Number of days back (0 = today only).
+
+    Returns:
+        Number of sections scored.
+    """
+    from datetime import timedelta
+
+    from piqued.models import SectionScore
+    from piqued.processing.profile_scorer import score_sections_for_user
+
+    try:
+        # Find sections this user hasn't scored yet
+        scored_ids_result = await session.execute(
+            select(SectionScore.section_id).where(
+                SectionScore.user_id == profile.user_id
+            )
+        )
+        scored_ids = {r[0] for r in scored_ids_result}
+
+        # Get sections within the date range
+        if days <= 0:
+            cutoff_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            sections_result = await session.execute(
+                select(Section)
+                .join(Article, Section.article_id == Article.id)
+                .where(
+                    Article.digest_date == cutoff_date,
+                    Article.status == ArticleStatus.complete,
+                )
+            )
+        else:
+            cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+            sections_result = await session.execute(
+                select(Section)
+                .join(Article, Section.article_id == Article.id)
+                .where(
+                    Article.published_at >= cutoff,
+                    Article.status == ArticleStatus.complete,
+                )
+            )
+
+        all_sections = list(sections_result.scalars().all())
+        unscored = [s for s in all_sections if s.id not in scored_ids]
+
+        if not unscored:
+            return 0
+
+        # Batch-load articles and feeds to avoid N+1
+        article_ids = list({s.article_id for s in unscored})
+        articles_result = await session.execute(
+            select(Article).where(Article.id.in_(article_ids))
+        )
+        articles_map = {a.id: a for a in articles_result.scalars()}
+
+        feed_ids = list({a.feed_id for a in articles_map.values()})
+        feeds_result = await session.execute(select(Feed).where(Feed.id.in_(feed_ids)))
+        feeds_map = {f.id: f for f in feeds_result.scalars()}
+
+        section_dicts = []
+        for s in unscored:
+            article = articles_map.get(s.article_id)
+            feed = feeds_map.get(article.feed_id) if article else None
+            section_dicts.append(
+                {
+                    "id": s.id,
+                    "index": s.section_index,
+                    "heading": s.heading or "",
+                    "summary": s.summary[:200],
+                    "tags": s.tags_list,
+                    "feed_name": feed.title if feed else "",
+                }
+            )
+
+        # Score via LLM
+        scoring_client = _get_llm_client("scoring")
+        try:
+            scored, tokens = await score_sections_for_user(
+                scoring_client, section_dicts, profile.profile_text
+            )
+
+            for sc in scored:
+                session.add(
+                    SectionScore(
+                        user_id=profile.user_id,
+                        section_id=sc.section_id,
+                        score=sc.score,
+                        reasoning=sc.reasoning,
+                        profile_version=profile.profile_version,
+                    )
+                )
+
+            await session.commit()
+            logger.info(
+                "Scored %d sections for user %d (%d tokens)",
+                len(scored),
+                profile.user_id,
+                tokens,
+            )
+            return len(scored)
+        finally:
+            if hasattr(scoring_client, "close"):
+                await scoring_client.close()
+
+    except Exception as e:
+        logger.exception("Scoring failed for user %d: %s", profile.user_id, e)
+        return 0
+
+
+async def ingest_feeds(feed_ids: list[int], max_per_feed: int = 2) -> int:
+    """On-demand ingest for specific feeds. Fetches articles and processes them.
+
+    Args:
+        feed_ids: Database IDs of feeds to ingest.
+        max_per_feed: Maximum articles to fetch per feed.
+
+    Returns:
+        Number of sections created.
+    """
+    client = FreshRSSClient()
+    try:
+        async with async_session() as session:
+            feeds = (
+                (await session.execute(select(Feed).where(Feed.id.in_(feed_ids))))
+                .scalars()
+                .all()
+            )
+
+            if not feeds:
+                return 0
+
+            article_ids = await _fetch_new_items(client, list(feeds), session)
+
+            # Limit to max_per_feed per feed
+            if max_per_feed and article_ids:
+                # Group by feed and cap
+                feed_articles: dict[int, list[int]] = {}
+                for aid in article_ids:
+                    article = await session.get(Article, aid)
+                    if article:
+                        feed_articles.setdefault(article.feed_id, []).append(aid)
+                capped = []
+                for fid_articles in feed_articles.values():
+                    capped.extend(fid_articles[:max_per_feed])
+                article_ids = capped
+
+        if not article_ids:
+            logger.info("On-demand ingest: no new articles found")
+            return 0
+
+        # Process articles concurrently
+        tasks = [_process_article(article_id) for article_id in article_ids]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        processed = sum(1 for r in results if r == "processed")
+        failed = sum(1 for r in results if isinstance(r, Exception) or r == "failed")
+        logger.info(
+            "On-demand ingest complete: %d processed, %d failed from %d feeds",
+            processed,
+            failed,
+            len(feed_ids),
+        )
+
+        # Count sections created
+        async with async_session() as session:
+            from sqlalchemy import func
+
+            section_count = await session.scalar(
+                select(func.count(Section.id))
+                .join(Article, Section.article_id == Article.id)
+                .where(Article.id.in_(article_ids))
+            )
+            return section_count or 0
+
+    finally:
+        await client.close()
+
+
 async def _score_for_all_users():
     """Score newly ingested sections for all users with profiles."""
-    from piqued.models import SectionScore, UserProfile
-    from piqued.processing.profile_scorer import score_sections_for_user
+    from piqued.models import UserProfile
 
     async with async_session() as session:
         # Get all users with profiles
@@ -467,90 +671,5 @@ async def _score_for_all_users():
         if not profiles:
             return
 
-        # Get today's unscored sections
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-
         for profile in profiles:
-            try:
-                # Find sections this user hasn't scored yet
-                scored_ids_result = await session.execute(
-                    select(SectionScore.section_id).where(
-                        SectionScore.user_id == profile.user_id
-                    )
-                )
-                scored_ids = {r[0] for r in scored_ids_result}
-
-                # Get today's sections
-                sections_result = await session.execute(
-                    select(Section)
-                    .join(Article, Section.article_id == Article.id)
-                    .where(
-                        Article.digest_date == today,
-                        Article.status == ArticleStatus.complete,
-                    )
-                )
-                all_sections = list(sections_result.scalars().all())
-                unscored = [s for s in all_sections if s.id not in scored_ids]
-
-                if not unscored:
-                    continue
-
-                # Batch-load articles and feeds to avoid N+1
-                article_ids = list({s.article_id for s in unscored})
-                articles_result = await session.execute(
-                    select(Article).where(Article.id.in_(article_ids))
-                )
-                articles_map = {a.id: a for a in articles_result.scalars()}
-
-                feed_ids = list({a.feed_id for a in articles_map.values()})
-                feeds_result = await session.execute(
-                    select(Feed).where(Feed.id.in_(feed_ids))
-                )
-                feeds_map = {f.id: f for f in feeds_result.scalars()}
-
-                section_dicts = []
-                for s in unscored:
-                    article = articles_map.get(s.article_id)
-                    feed = feeds_map.get(article.feed_id) if article else None
-                    section_dicts.append(
-                        {
-                            "id": s.id,
-                            "index": s.section_index,
-                            "heading": s.heading or "",
-                            "summary": s.summary[:200],
-                            "tags": s.tags_list,
-                            "feed_name": feed.title if feed else "",
-                        }
-                    )
-
-                # Score via LLM
-                scoring_client = _get_llm_client("scoring")
-                try:
-                    scored, tokens = await score_sections_for_user(
-                        scoring_client, section_dicts, profile.profile_text
-                    )
-
-                    for sc in scored:
-                        session.add(
-                            SectionScore(
-                                user_id=profile.user_id,
-                                section_id=sc.section_id,
-                                score=sc.score,
-                                reasoning=sc.reasoning,
-                                profile_version=profile.profile_version,
-                            )
-                        )
-
-                    await session.commit()
-                    logger.info(
-                        "Scored %d sections for user %d (%d tokens)",
-                        len(scored),
-                        profile.user_id,
-                        tokens,
-                    )
-                finally:
-                    if hasattr(scoring_client, "close"):
-                        await scoring_client.close()
-
-            except Exception as e:
-                logger.exception("Scoring failed for user %d: %s", profile.user_id, e)
+            await _score_sections_for_profile(session, profile, days=0)

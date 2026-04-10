@@ -46,6 +46,12 @@ const router = createRouter({
       meta: { title: 'Log' },
     },
     {
+      path: '/bootstrap',
+      name: 'bootstrap',
+      component: () => import('@/views/BootstrapView.vue'),
+      meta: { title: 'Get Started' },
+    },
+    {
       path: '/:pathMatch(.*)*',
       name: 'not-found',
       component: () => import('@/views/NotFoundView.vue'),
