@@ -50,8 +50,9 @@ interface ConfigField {
   key: string
   label: string
   help: string
-  type?: 'text' | 'password' | 'number' | 'select'
+  type?: 'text' | 'password' | 'number' | 'select' | 'model'
   options?: { value: string; label: string }[]
+  providerKey?: string
   showIf?: () => boolean
 }
 
@@ -86,6 +87,33 @@ function togglePasswordReveal(key: string) {
   if (next.has(key)) next.delete(key)
   else next.add(key)
   revealedPasswords.value = next
+}
+function isPlaceholderPassword(key: string): boolean {
+  return settings.value[key] === '••••••••'
+}
+
+// Provider → model suggestions
+const MODEL_SUGGESTIONS: Record<string, { value: string; label: string }[]> = {
+  gemini: [
+    { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+    { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+    { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+  ],
+  openai: [
+    { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+    { value: 'gpt-4o', label: 'GPT-4o' },
+    { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' },
+    { value: 'gpt-4.1-nano', label: 'GPT-4.1 Nano' },
+  ],
+  claude: [
+    { value: 'claude-haiku-4-5-20251001', label: 'Claude 4.5 Haiku' },
+    { value: 'claude-sonnet-4-6-20250514', label: 'Claude 4.6 Sonnet' },
+  ],
+  ollama: [],
+}
+function getModelSuggestions(providerKey: string): { value: string; label: string }[] {
+  const provider = settings.value[providerKey] || ''
+  return MODEL_SUGGESTIONS[provider] || []
 }
 
 // ── Throughput presets ──────────────────────────────────────────
@@ -217,7 +245,9 @@ const CONFIG_SECTIONS: ConfigSection[] = [
       {
         key: 'llm_model',
         label: 'Model',
-        help: 'Exact model identifier. Examples: gemini-2.5-flash, gpt-4o-mini, claude-haiku-4-5-20251001, llama3.1:8b. Cheaper/faster models are fine — segmentation does not need a frontier model.',
+        help: 'Exact model identifier. Pick from the list or type a custom value. Cheaper/faster models are fine — segmentation does not need a frontier model.',
+        type: 'model',
+        providerKey: 'llm_provider',
       },
       {
         key: 'llm_api_key',
@@ -306,7 +336,7 @@ const CONFIG_SECTIONS: ConfigSection[] = [
           { value: 'ollama', label: 'Ollama' },
         ],
       },
-      { key: 'llm_classify_model', label: 'Model', help: 'Model name override.' },
+      { key: 'llm_classify_model', label: 'Model', help: 'Model name override.', type: 'model', providerKey: 'llm_classify_provider' },
       { key: 'llm_classify_api_key', label: 'API key', help: 'API key for the override provider.', type: 'password' },
       { key: 'llm_classify_base_url', label: 'Base URL', help: 'Base URL override.' },
     ],
@@ -330,7 +360,7 @@ const CONFIG_SECTIONS: ConfigSection[] = [
           { value: 'ollama', label: 'Ollama' },
         ],
       },
-      { key: 'llm_scoring_model', label: 'Model', help: 'Model name override.' },
+      { key: 'llm_scoring_model', label: 'Model', help: 'Model name override.', type: 'model', providerKey: 'llm_scoring_provider' },
       { key: 'llm_scoring_api_key', label: 'API key', help: 'API key for scoring override.', type: 'password' },
       { key: 'llm_scoring_base_url', label: 'Base URL', help: 'Base URL override.' },
     ],
@@ -929,6 +959,7 @@ onMounted(async () => {
                 autocomplete="off"
               >
               <button
+                v-if="!isPlaceholderPassword(field.key)"
                 type="button"
                 class="btn btn--small password-toggle"
                 :aria-label="revealedPasswords.has(field.key) ? 'Hide value' : 'Show value'"
@@ -936,6 +967,10 @@ onMounted(async () => {
               >
                 {{ revealedPasswords.has(field.key) ? 'Hide' : 'Show' }}
               </button>
+              <span
+                v-else
+                class="password-placeholder-hint"
+              >Saved — enter a new value to change</span>
             </div>
             <input
               v-else
@@ -1037,6 +1072,35 @@ onMounted(async () => {
             </select>
 
             <div
+              v-else-if="field.type === 'model'"
+              class="model-row"
+            >
+              <select
+                v-if="field.providerKey && getModelSuggestions(field.providerKey).length"
+                :id="`config-${field.key}`"
+                v-model="settings[field.key]"
+                class="field-select"
+              >
+                <option
+                  v-for="opt in getModelSuggestions(field.providerKey)"
+                  :key="opt.value"
+                  :value="opt.value"
+                >
+                  {{ opt.label }}
+                </option>
+                <option value="">Other (type below)</option>
+              </select>
+              <input
+                v-if="!field.providerKey || !getModelSuggestions(field.providerKey).length || !settings[field.key]"
+                :id="!field.providerKey || !getModelSuggestions(field.providerKey).length ? `config-${field.key}` : undefined"
+                v-model="settings[field.key]"
+                class="field-input"
+                type="text"
+                placeholder="e.g. llama3.1:8b"
+              >
+            </div>
+
+            <div
               v-else-if="field.type === 'password'"
               class="password-row"
             >
@@ -1048,6 +1112,7 @@ onMounted(async () => {
                 autocomplete="off"
               >
               <button
+                v-if="!isPlaceholderPassword(field.key)"
                 type="button"
                 class="btn btn--small password-toggle"
                 :aria-label="revealedPasswords.has(field.key) ? 'Hide value' : 'Show value'"
@@ -1055,6 +1120,10 @@ onMounted(async () => {
               >
                 {{ revealedPasswords.has(field.key) ? 'Hide' : 'Show' }}
               </button>
+              <span
+                v-else
+                class="password-placeholder-hint"
+              >Saved — enter a new value to change</span>
             </div>
 
             <input
@@ -1584,6 +1653,20 @@ onMounted(async () => {
 .password-toggle {
   flex: 0 0 auto;
   white-space: nowrap;
+}
+
+.password-placeholder-hint {
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+  color: var(--pq-muted);
+  align-self: center;
+  white-space: nowrap;
+}
+
+.model-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
 }
 
 .preset-grid {
