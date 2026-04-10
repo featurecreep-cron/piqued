@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useContentStore } from '@/stores/content'
 import { useLayout } from '@/composables/useLayout'
+import { useApi } from '@/composables/useApi'
+import type { BootstrapStatusResponse } from '@/types/api'
 import DateNav from '@/components/sections/DateNav.vue'
 import RiverLayout from '@/components/triage/RiverLayout.vue'
 import ReaderLayout from '@/components/triage/ReaderLayout.vue'
@@ -11,8 +14,21 @@ import EmptyState from '@/components/common/EmptyState.vue'
 
 const content = useContentStore()
 const layout = useLayout()
+const router = useRouter()
+const api = useApi()
 
-onMounted(() => {
+onMounted(async () => {
+  // Redirect to bootstrap if not yet calibrated
+  try {
+    const status = await api.get<BootstrapStatusResponse>('/bootstrap/status')
+    if (!status.bootstrap_complete) {
+      router.replace('/bootstrap')
+      return
+    }
+  } catch {
+    // If the check fails, proceed to triage anyway
+  }
+
   if (!content.sections.length) {
     content.loadSections()
   }
