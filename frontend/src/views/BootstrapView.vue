@@ -35,13 +35,7 @@ onMounted(async () => {
       return
     }
 
-    // If content already exists (e.g. pipeline already ran), skip to sampling
-    if (status.has_sections) {
-      await loadSamples()
-      return
-    }
-
-    // Load feeds for calibration selection
+    // Always show feed picker — existing content may be stale/low-quality
     const feedData = await api.get<FeedList>('/feeds')
     feeds.value = feedData.feeds.filter(f => f.active)
 
@@ -79,16 +73,20 @@ async function startIngest() {
       step.value = 'pick-feeds'
       return
     }
-    await loadSamples()
+    await loadSamples(selectedFeedIds.value)
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Ingestion failed'
     step.value = 'pick-feeds'
   }
 }
 
-async function loadSamples() {
+async function loadSamples(scopeFeedIds?: number[]) {
   try {
-    samples.value = await api.get<SectionItem[]>('/bootstrap/sample')
+    const params: Record<string, string> = {}
+    if (scopeFeedIds?.length) {
+      params.feed_ids = scopeFeedIds.join(',')
+    }
+    samples.value = await api.get<SectionItem[]>('/bootstrap/sample', params)
     if (samples.value.length === 0) {
       error.value = 'No content available to sample. The pipeline may need to run first.'
       step.value = 'pick-feeds'

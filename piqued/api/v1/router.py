@@ -776,17 +776,24 @@ async def bootstrap_status(
 
 @router.get("/bootstrap/sample", response_model=list[SectionItem])
 async def bootstrap_sample(
+    feed_ids: str | None = None,
     user: User = Depends(get_api_user),
     session: AsyncSession = Depends(get_session),
 ):
-    """Return ~5 sections from recently ingested content for calibration."""
+    """Return ~5 sections from recently ingested content for calibration.
+
+    Args:
+        feed_ids: Comma-separated feed IDs to scope sampling to (from ingest step).
+    """
     from sqlalchemy.orm import joinedload
 
-    # Get one recent completed article per active feed, then pick first quality section
-    active_feeds_result = await session.execute(
-        select(Feed.id).where(Feed.active.is_(True))
-    )
-    active_feed_ids = [r[0] for r in active_feeds_result]
+    if feed_ids:
+        active_feed_ids = [int(x) for x in feed_ids.split(",") if x.strip().isdigit()]
+    else:
+        active_feeds_result = await session.execute(
+            select(Feed.id).where(Feed.active.is_(True))
+        )
+        active_feed_ids = [r[0] for r in active_feeds_result]
 
     samples: list[SectionItem] = []
     for feed_id in active_feed_ids:
