@@ -782,7 +782,7 @@ async def bootstrap_sample(
     """Return ~5 sections from recently ingested content for calibration."""
     from sqlalchemy.orm import joinedload
 
-    # Get one recent completed article per active feed, then pick first section
+    # Get one recent completed article per active feed, then pick first quality section
     active_feeds_result = await session.execute(
         select(Feed.id).where(Feed.active.is_(True))
     )
@@ -793,8 +793,8 @@ async def bootstrap_sample(
         if len(samples) >= 5:
             break
 
-        # Most recent completed article for this feed
-        article_result = await session.execute(
+        # Try recent completed articles for this feed (not just the latest)
+        articles_result = await session.execute(
             select(Article)
             .options(joinedload(Article.feed), joinedload(Article.sections))
             .where(
@@ -802,32 +802,57 @@ async def bootstrap_sample(
                 Article.status == ArticleStatus.complete,
             )
             .order_by(Article.published_at.desc())
-            .limit(1)
+            .limit(5)
         )
-        article = article_result.scalars().first()
-        if not article or not article.sections:
-            continue
+        articles = articles_result.unique().scalars().all()
 
-        section = article.sections[0]
-        samples.append(
-            SectionItem(
-                id=section.id,
-                article_id=article.id,
-                article_title=article.title,
-                feed_title=article.feed.title if article.feed else "",
-                heading=section.heading,
-                summary=section.summary,
-                topic_tags=section.tags_list,
-                score=0.5,
-                reasoning=section.reasoning,
-                is_surprise=False,
-                has_humor=section.has_humor,
-                has_surprise_data=section.has_surprise_data,
-                has_actionable_advice=section.has_actionable_advice,
-                article_url=article.url,
-                published_at=article.published_at,
-            )
-        )
+        found = False
+        for article in articles:
+            if found:
+                break
+            for section in article.sections:
+                # Skip fallback sections (LLM segmentation failed)
+                if section.summary.startswith("[Segmentation unavailable]"):
+                    continue
+                # Skip sections with no topic tags
+                if not section.tags_list:
+                    continue
+                # Skip captcha/bot-challenge content that slipped past classifier
+                summary_lower = section.summary.lower()
+                if any(
+                    marker in summary_lower
+                    for marker in (
+                        "captcha",
+                        "verify you are human",
+                        "checking your browser",
+                        "unusual activity",
+                        "security check",
+                        "enable javascript",
+                        "cloudflare",
+                    )
+                ):
+                    continue
+                samples.append(
+                    SectionItem(
+                        id=section.id,
+                        article_id=article.id,
+                        article_title=article.title,
+                        feed_title=article.feed.title if article.feed else "",
+                        heading=section.heading,
+                        summary=section.summary,
+                        topic_tags=section.tags_list,
+                        score=0.5,
+                        reasoning=section.reasoning,
+                        is_surprise=False,
+                        has_humor=section.has_humor,
+                        has_surprise_data=section.has_surprise_data,
+                        has_actionable_advice=section.has_actionable_advice,
+                        article_url=article.url,
+                        published_at=article.published_at,
+                    )
+                )
+                found = True
+                break
 
     return samples
 
