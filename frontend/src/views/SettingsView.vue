@@ -88,10 +88,6 @@ function togglePasswordReveal(key: string) {
   else next.add(key)
   revealedPasswords.value = next
 }
-function isPlaceholderPassword(key: string): boolean {
-  return settings.value[key] === '••••••••'
-}
-
 // Provider → model suggestions
 const MODEL_SUGGESTIONS: Record<string, { value: string; label: string }[]> = {
   gemini: [
@@ -959,7 +955,6 @@ onMounted(async () => {
                 autocomplete="off"
               >
               <button
-                v-if="!isPlaceholderPassword(field.key)"
                 type="button"
                 class="btn btn--small password-toggle"
                 :aria-label="revealedPasswords.has(field.key) ? 'Hide value' : 'Show value'"
@@ -967,10 +962,6 @@ onMounted(async () => {
               >
                 {{ revealedPasswords.has(field.key) ? 'Hide' : 'Show' }}
               </button>
-              <span
-                v-else
-                class="password-placeholder-hint"
-              >Saved — enter a new value to change</span>
             </div>
             <input
               v-else
@@ -1112,7 +1103,6 @@ onMounted(async () => {
                 autocomplete="off"
               >
               <button
-                v-if="!isPlaceholderPassword(field.key)"
                 type="button"
                 class="btn btn--small password-toggle"
                 :aria-label="revealedPasswords.has(field.key) ? 'Hide value' : 'Show value'"
@@ -1120,10 +1110,6 @@ onMounted(async () => {
               >
                 {{ revealedPasswords.has(field.key) ? 'Hide' : 'Show' }}
               </button>
-              <span
-                v-else
-                class="password-placeholder-hint"
-              >Saved — enter a new value to change</span>
             </div>
 
             <input
@@ -1652,14 +1638,6 @@ onMounted(async () => {
 
 .password-toggle {
   flex: 0 0 auto;
-  white-space: nowrap;
-}
-
-.password-placeholder-hint {
-  flex: 0 0 auto;
-  font-size: 0.75rem;
-  color: var(--pq-muted);
-  align-self: center;
   white-space: nowrap;
 }
 
