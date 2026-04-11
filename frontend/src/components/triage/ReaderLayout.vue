@@ -181,6 +181,8 @@ onUnmounted(() => window.removeEventListener('piqued:select-focused', onSelectFo
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
+  z-index: 1;
 }
 
 .list-header {

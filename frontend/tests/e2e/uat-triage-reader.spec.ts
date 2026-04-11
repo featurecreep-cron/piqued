@@ -71,11 +71,7 @@ test.describe('UAT: Triage — Reader Layout', () => {
     await expect(collapseBtn).toHaveAttribute('aria-label', 'Show navigation')
   })
 
-  test.fixme('collapse button restores nav pane when clicked again', async ({ page }) => {
-    // BUG: After collapsing nav, the detail pane overlaps the collapse button,
-    // making it unclickable. The list-header z-index doesn't create a high
-    // enough stacking context to sit above the adjacent grid cell's content.
-    // Fix requires reworking the reader grid layout to properly contain each cell.
+  test('collapse button restores nav pane when clicked again', async ({ page }) => {
     const collapseBtn = page.locator('.collapse-btn')
     await collapseBtn.click()
     await collapseBtn.click()
