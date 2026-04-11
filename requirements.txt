@@ -1,12 +1,12 @@
 fastapi[standard]==0.135.*
-uvicorn[standard]==0.43.*
+uvicorn[standard]==0.44.*
 sqlalchemy[asyncio]==2.0.*
 aiosqlite==0.22.*
-alembic==1.16.*
+alembic==1.18.*
 httpx==0.28.*
-google-genai==1.70.*
+google-genai==1.72.*
 openai==2.30.*
-anthropic==0.88.*
+anthropic==0.94.*
 apscheduler==3.11.*
 beautifulsoup4==4.14.*
 readability-lxml==0.8.*
