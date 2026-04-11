@@ -4,7 +4,7 @@ sqlalchemy[asyncio]==2.0.*
 aiosqlite==0.22.*
 alembic==1.18.*
 httpx==0.28.*
-google-genai==1.70.*
+google-genai==1.72.*
 openai==2.30.*
 anthropic==0.88.*
 apscheduler==3.11.*
