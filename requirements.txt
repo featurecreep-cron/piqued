@@ -6,7 +6,7 @@ alembic==1.18.*
 httpx==0.28.*
 google-genai==1.72.*
 openai==2.30.*
-anthropic==0.88.*
+anthropic==0.94.*
 apscheduler==3.11.*
 beautifulsoup4==4.14.*
 readability-lxml==0.8.*
