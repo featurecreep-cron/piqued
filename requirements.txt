@@ -1,4 +1,4 @@
-fastapi[standard]==0.135.*
+fastapi[standard]==0.136.*
 uvicorn[standard]==0.45.*
 sqlalchemy[asyncio]==2.0.*
 aiosqlite==0.22.*
