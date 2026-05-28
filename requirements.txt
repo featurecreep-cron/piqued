@@ -5,7 +5,7 @@ aiosqlite==0.22.*
 alembic==1.18.*
 httpx==0.28.*
 google-genai==2.6.*
-openai==2.37.*
+openai==2.38.*
 anthropic==0.104.*
 apscheduler==3.11.*
 beautifulsoup4==4.14.*
