@@ -8,7 +8,7 @@ google-genai==2.8.*
 openai==2.41.*
 anthropic==0.104.*
 apscheduler==3.11.*
-beautifulsoup4==4.14.*
+beautifulsoup4==4.15.*
 readability-lxml==0.8.*
 jinja2==3.1.*
 python-multipart>=0.0.30
